@@ -110,6 +110,10 @@ Load one of these files from the Strategy Tester input tab:
   - Disables ADX because the reversal signal is not trend-continuation based.
   - Allows minimum-lot trades only when estimated risk is capped.
   - Uses lower per-trade risk and closer targets because it is a reversal style.
+- `Presets/US500_M5_Tickmill_Recommended.set`
+  - Same short-only failed-break candidate settings, named for US500 testing.
+  - The first 2026 US500 test was positive but weaker than US30, so this remains
+    a validation preset rather than a live-ready recommendation.
 - `Presets/US30_M5_Tickmill_SignalDiscovery.set`
   - Diagnostic only, not a live preset.
   - Uses direct breakout mode.
@@ -153,11 +157,18 @@ User-supplied Tickmill US30 M5 real-tick tests so far:
 | 2026.01.01-2026.06.24 | Failed-break reversal, short-only | 5 | 46.65 | 2.57 | 0.30% | Positive out-of-sample sub-period. |
 | 2026.01.01-2026.06.24 | Failed-break reversal, long-only | 3 | -14.07 | 0.65 | 0.40% | Negative; supports keeping US30 short-only. |
 
+Cross-symbol checks using the current short-only failed-break candidate:
+
+| Symbol | Period | Trades | Net ZAR | Profit factor | Max balance DD | Notes |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| US500 | 2026.01.01-2026.06.24 | 5 | 23.97 | 1.53 | 0.45% | Preliminary positive; weaker than US30. |
+
 Next validation priority:
 
-1. Test `US30_M5_Tickmill_Recommended.set` on US500 and USTEC.
-2. Forward test the short-only US30 preset on demo before considering live use.
-3. Do not increase risk until the demo test confirms fills, spread behavior, and
+1. Test the short-only failed-break setup on US500 for 2025.
+2. Test the short-only failed-break setup on USTEC for 2025 and 2026.
+3. Forward test the short-only US30 preset on demo before considering live use.
+4. Do not increase risk until the demo test confirms fills, spread behavior, and
    signal frequency in current market conditions.
 
 ## If a backtest shows zero trades
