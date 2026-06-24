@@ -20,6 +20,7 @@ InpSwingLookback=8
 InpStopBufferAtr=0.25
 InpMinStopAtr=0.70
 InpMaxStopAtr=4.00
+InpUseTakeProfit=true
 InpRewardRisk=1.50
 InpBreakevenR=1.00
 InpBreakevenBufferAtr=0.05

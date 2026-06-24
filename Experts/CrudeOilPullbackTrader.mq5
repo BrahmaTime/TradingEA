@@ -54,7 +54,8 @@ input int                  InpSwingLookback        = 8;            // Bars used 
 input double               InpStopBufferAtr        = 0.25;         // Extra distance beyond swing for the stop (* ATR)
 input double               InpMinStopAtr           = 0.80;         // Stop is at least this distance (* ATR)
 input double               InpMaxStopAtr           = 3.50;         // Skip trade if required stop exceeds this (* ATR)
-input double               InpRewardRisk           = 1.60;         // Take-profit reward:risk multiple
+input bool                 InpUseTakeProfit        = true;         // false = trailing-only (let trends run, no R cap)
+input double               InpRewardRisk           = 1.60;         // Take-profit reward:risk multiple (when TP enabled)
 input double               InpBreakevenR           = 1.00;         // Move stop to breakeven at this R multiple
 input double               InpBreakevenBufferAtr   = 0.05;         // Breakeven offset beyond entry (* ATR)
 input double               InpTrailStartR          = 1.30;         // Begin ATR trailing at this R multiple
@@ -107,6 +108,11 @@ int      g_atrHandle        = INVALID_HANDLE;
 int      g_rsiHandle        = INVALID_HANDLE;
 int      g_adxHandle        = INVALID_HANDLE;
 datetime g_lastBarTime      = 0;
+
+// Tracks the open position's risk at entry so R-multiples stay stable
+// after the stop trails (essential for trailing-only / no-TP mode).
+ulong    g_trackedTicket    = 0;
+double   g_trackedRisk      = 0.0;
 
 // Pullback state machine (per direction)
 bool     g_longArmed        = false;
@@ -444,9 +450,10 @@ bool StopsMeetBrokerMinimum(const bool isLong, const double sl, const double tp)
    const double minDist = stopsLevel * point;
    if(minDist <= 0.0)
       return true;
+   // A zero TP means "no take-profit" (trailing-only); skip the TP distance check.
    if(isLong)
-      return (tick.bid - sl) >= minDist && (tp - tick.bid) >= minDist;
-   return (sl - tick.ask) >= minDist && (tick.ask - tp) >= minDist;
+      return (tick.bid - sl) >= minDist && (tp <= 0.0 || (tp - tick.bid) >= minDist);
+   return (sl - tick.ask) >= minDist && (tp <= 0.0 || (tick.ask - tp) >= minDist);
 }
 
 //+------------------------------------------------------------------+
@@ -548,10 +555,13 @@ void OpenTrade(const bool isLong, const double atr, const MqlRates &rates[])
       return;
    }
 
-   double takeProfit = isLong ? entry + riskDistance * InpRewardRisk
-                              : entry - riskDistance * InpRewardRisk;
+   double takeProfit = 0.0;
+   if(InpUseTakeProfit)
+      takeProfit = isLong ? entry + riskDistance * InpRewardRisk
+                          : entry - riskDistance * InpRewardRisk;
    stopLoss   = NormalizePrice(stopLoss);
-   takeProfit = NormalizePrice(takeProfit);
+   if(takeProfit > 0.0)
+      takeProfit = NormalizePrice(takeProfit);
 
    if(!StopsMeetBrokerMinimum(isLong, stopLoss, takeProfit))
    {
@@ -581,6 +591,16 @@ void OpenTrade(const bool isLong, const double atr, const MqlRates &rates[])
    {
       g_tradesToday++;
       g_diagOrders++;
+      g_trackedTicket = 0;
+      g_trackedRisk   = 0.0;
+      if(PositionSelect(g_symbol))         // anchor R-multiples to the actual fill
+      {
+         g_trackedTicket = (ulong)PositionGetInteger(POSITION_TICKET);
+         const double filledOpen = PositionGetDouble(POSITION_PRICE_OPEN);
+         const double filledSl   = PositionGetDouble(POSITION_SL);
+         if(filledSl > 0.0)
+            g_trackedRisk = MathAbs(filledOpen - filledSl);
+      }
       const int digits = (int)SymbolInfoInteger(g_symbol, SYMBOL_DIGITS);
       PrintFormat("%s %s opened vol=%.4f SL=%s TP=%s risk=%.2f%%",
                   g_symbol, isLong ? "long" : "short", volume,
@@ -603,6 +623,12 @@ void ManagePositions()
 {
    const bool dailyLimit = DailyLossReached();
    const bool windowClosed = InpCloseAtWindowEnd && !InSessionWindow(TimeCurrent());
+
+   if(CountManagedPositions() == 0)        // flat: drop stale entry-risk tracking
+   {
+      g_trackedTicket = 0;
+      g_trackedRisk   = 0.0;
+   }
 
    double atr = 0.0;
    GetBuffer(g_atrHandle, 0, 1, atr);
@@ -639,10 +665,12 @@ void ManagePositions()
       const double mark    = isLong ? tick.bid : tick.ask;
 
       double initialRisk = 0.0;
-      if(curTp > 0.0 && InpRewardRisk > 0.0)
+      if(ticket == g_trackedTicket && g_trackedRisk > 0.0)
+         initialRisk = g_trackedRisk;                                  // stable entry risk
+      if(initialRisk <= 0.0 && curTp > 0.0 && InpRewardRisk > 0.0)
          initialRisk = MathAbs(curTp - open) / InpRewardRisk;
       if(initialRisk <= 0.0 && curSl > 0.0)
-         initialRisk = MathAbs(open - curSl);
+         initialRisk = MathAbs(open - curSl);                          // fallback (e.g. after restart)
       if(initialRisk <= 0.0)
          continue;
 
@@ -897,9 +925,14 @@ int OnInit()
       Print("Invalid bias EMA settings: fast must be > 0 and < slow.");
       return INIT_PARAMETERS_INCORRECT;
    }
-   if(InpRewardRisk <= 0.0 || InpRiskPercentPerTrade <= 0.0)
+   if(InpRiskPercentPerTrade <= 0.0)
    {
-      Print("Invalid risk settings: reward:risk and risk percent must be positive.");
+      Print("Invalid risk settings: risk percent must be positive.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+   if(InpUseTakeProfit && InpRewardRisk <= 0.0)
+   {
+      Print("Invalid risk settings: reward:risk must be positive when take-profit is enabled.");
       return INIT_PARAMETERS_INCORRECT;
    }
 

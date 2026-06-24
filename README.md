@@ -91,11 +91,26 @@ Tickmill's server is typically GMT+2/+3, so the default `InpNewsHour = 16`,
 
 ### Presets
 
-- `Presets/USOIL_M5_Tickmill_Recommended.set` — conservative first-pass config
-  (ADX on, news blackout on, session filter on).
+- `Presets/USOIL_M5_Tickmill_Recommended.set` — conservative, validated baseline
+  (fixed 1.6R take-profit, ADX/news/session filters on).
+- `Presets/USOIL_M5_Tickmill_RunnerTrail.set` — **trend-runner variant**.
+  Disables the fixed take-profit (`InpUseTakeProfit=false`) and rides a wide
+  ATR "chandelier" trail (`InpTrailAtrMultiplier=2.6`, breakeven/trail from
+  ~1.2R) so strong oil trends can run well beyond 1.6R. Same conservative
+  entries and risk. Use this to A/B against the Recommended baseline.
 - `Presets/USOIL_M5_Tickmill_SignalDiscovery.set` — diagnostic only. Loosens
   filters (ADX off, news/session off) to confirm the EA produces a usable trade
   sample. Not intended for live use.
+
+### Take-profit vs trailing-only
+
+`InpUseTakeProfit=true` (default) closes at a fixed `InpRewardRisk` multiple —
+steady and predictable, but it caps every winner. For a trend-pullback system on
+oil, that ceiling throws away the fat-tailed moves that drive returns. Setting
+`InpUseTakeProfit=false` removes the cap and exits purely on the ATR trail, which
+typically raises the average win (at the cost of giving a little back on trades
+that reverse). Backtest both on your data and pick the one with the better
+return-to-drawdown profile.
 
 ### Tuning and validation
 
