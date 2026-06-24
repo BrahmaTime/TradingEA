@@ -17,6 +17,7 @@ adds filters and risk controls:
 - 30-minute opening range by default
 - M5 candle-close breakout confirmation
 - Optional break-retest-rebreak confirmation to reduce false breakout chasing
+- Optional failed-breakout reversal mode for mean-reversion tests
 - Optional long-only, short-only, or both-direction operation
 - EMA 20/50 trend alignment
 - M15 EMA 200 directional filter
@@ -109,13 +110,18 @@ Load one of these files from the Strategy Tester input tab:
   - Uses direct breakout mode.
   - Loosens filters to confirm the EA can produce a meaningful sample size.
   - Use this if the recommended preset still produces very few trades.
+- `Presets/US30_M5_Tickmill_FailedBreakReversal.set`
+  - Experimental diagnostic preset, not a live preset.
+  - Tests the opposite hypothesis: failed ORB breaks that close back inside the
+    range may be better mean-reversion entries than breakout continuation.
+  - Uses lower per-trade risk and closer targets because it is a reversal style.
 
 The earlier direct-breakout recommended preset produced a larger sample but poor
 trade quality on US30: average losses were materially larger than average wins.
-The recommended preset now prioritizes cleaner entries and larger winner room,
-even if trade count falls. If the signal-discovery preset produces many trades
-but the recommended preset produces very few, copy the diagnostics block from the
-journal because it will identify which retest/filter gate is the bottleneck.
+The retest-breakout preset reduced trade count and drawdown, but the reported
+US30 sample was still negative. This is evidence that breakout continuation may
+not have an edge on the tested Tickmill US30 feed. The failed-breakout reversal
+preset is the next hypothesis to test before abandoning ORB on this symbol.
 
 ## If a backtest shows zero trades
 
@@ -133,6 +139,7 @@ The summary shows how many bars reached each gate:
 - `breakouts_long` / `breakouts_short`: valid ORB closes detected
 - `retests_long` / `retests_short`: retests detected after initial breaks
 - `retest_expired_*`: initial breaks that failed to retest/rebreak in time
+- `failed_break_long` / `failed_break_short`: failed-break reversal signals
 - `trend_reject_*`: EMA/ADX trend filters blocked detected breakouts
 - `volume_reject_*`: tick-volume filter blocked detected breakouts
 - `size_reject_*`: stop distance, broker stop-level, margin, or lot-size risk
