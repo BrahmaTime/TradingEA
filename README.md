@@ -3,7 +3,8 @@
 ## US Oil Trend Pullback Guardian for MT5
 
 `Experts/USOilTrendPullbackGuardian.mq5` is a conservative MetaTrader 5 Expert
-Advisor designed for the M5 timeframe on USOIL / WTI crude oil CFDs.
+Advisor designed for the M5 timeframe on Tickmill `XTIUSD` / USOIL / WTI crude
+oil CFDs.
 
 The strategy is a rules-based trend pullback model:
 
@@ -58,25 +59,29 @@ skips the trade.
    `MQL5/Experts/USOilTrendPullbackGuardian.mq5`
 2. Open MetaEditor.
 3. Compile the file.
-4. Attach it to a USOIL M5 chart or run it in Strategy Tester on USOIL M5.
-5. Ensure the USOIL symbol is visible in Market Watch.
+4. Attach it to a Tickmill `XTIUSD` M5 chart or run it in Strategy Tester on
+   `XTIUSD` M5.
+5. Ensure the oil symbol is visible in Market Watch.
 
-If Tickmill appends suffixes such as `.cash`, leave
-`InpAutoResolveSymbol = true`; otherwise set `InpSymbol` to the exact broker
-symbol.
+Tickmill lists WTI crude oil as `XTIUSD`. If your broker uses `USOIL`, `WTI`,
+`USOUSD`, `SpotCrude`, or adds suffixes such as `.cash`, leave
+`InpAutoResolveSymbol = true` and keep the aliases in `InpOilSymbolAliases`;
+otherwise set `InpSymbol` to the exact broker symbol.
 
 In MT5 Strategy Tester the EA defaults to `InpUseChartSymbolOnlyInTester = true`.
 This makes tests easier to interpret because the tester chart symbol is used even
 if your live input uses a different Tickmill suffix. The
 `InpStrictTesterSymbolGuard` input stops Strategy Tester initialization when the
-chart/tester symbol is not USOIL-like.
+chart/tester symbol is not in the WTI alias list. If you intentionally test a
+different broker oil symbol, add it to `InpOilSymbolAliases` or temporarily set
+`InpStrictTesterSymbolGuard = false`.
 
 ## USOIL presets
 
 Load one of these files from the Strategy Tester input tab:
 
 - `Presets/USOIL_M5_Tickmill_Recommended.set`
-  - Intended first-pass Tickmill USOIL M5 configuration.
+  - Intended first-pass Tickmill `XTIUSD` M5 configuration.
   - Uses one trade per day, ADX 22, conservative ATR/spread filters, and a
     Wednesday EIA news guard.
   - Start with this preset for real-tick backtests and demo forward testing.

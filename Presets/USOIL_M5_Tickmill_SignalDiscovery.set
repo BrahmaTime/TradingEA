@@ -1,4 +1,5 @@
-InpSymbol=USOIL
+InpSymbol=XTIUSD
+InpOilSymbolAliases=USOIL,XTIUSD,WTI,WTIUSD,USOUSD,SpotCrude
 InpAutoResolveSymbol=true
 InpUseChartSymbolOnlyInTester=true
 InpStrictTesterSymbolGuard=true

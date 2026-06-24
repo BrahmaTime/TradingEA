@@ -23,10 +23,11 @@ enum ENUM_TRADE_DIRECTION
 };
 
 input group "Symbol"
-input string          InpSymbol                      = "USOIL";     // Tickmill symbol; suffixes are auto-detected when possible
+input string          InpSymbol                      = "XTIUSD";    // Tickmill WTI crude symbol; suffixes are auto-detected
+input string          InpOilSymbolAliases            = "USOIL,XTIUSD,WTI,WTIUSD,USOUSD,SpotCrude"; // Allowed WTI aliases for tester/auto-resolve
 input bool            InpAutoResolveSymbol           = true;
 input bool            InpUseChartSymbolOnlyInTester  = true;        // Safer single-symbol Strategy Tester runs
-input bool            InpStrictTesterSymbolGuard     = true;        // Abort tester if chart symbol is not USOIL-like
+input bool            InpStrictTesterSymbolGuard     = true;        // Abort tester if chart symbol is not WTI/USOIL-like
 input ENUM_TIMEFRAMES InpTradeTimeframe              = PERIOD_M5;   // Strategy timeframe
 
 input group "Session - broker/server time"
@@ -188,6 +189,14 @@ double NormalizeVolume(const string symbol, const double requestedVolume)
    return volume;
 }
 
+string Trim(const string value)
+{
+   string result = value;
+   StringTrimLeft(result);
+   StringTrimRight(result);
+   return result;
+}
+
 bool SymbolNameMatchesRequest(const string symbolName, const string requested)
 {
    if(symbolName == requested)
@@ -208,6 +217,23 @@ bool SymbolNameMatchesRequest(const string symbolName, const string requested)
    return StringFind(upperSymbol, upperRequest) >= 0;
 }
 
+bool SymbolNameMatchesAnyRequest(const string symbolName, const string primaryRequest, const string aliases)
+{
+   if(SymbolNameMatchesRequest(symbolName, primaryRequest))
+      return true;
+
+   string parts[];
+   const int count = StringSplit(aliases, ',', parts);
+   for(int i = 0; i < count; i++)
+   {
+      const string alias = Trim(parts[i]);
+      if(alias != "" && SymbolNameMatchesRequest(symbolName, alias))
+         return true;
+   }
+
+   return false;
+}
+
 string ResolveSymbolName(const string requested)
 {
    if(SymbolSelect(requested, true))
@@ -220,7 +246,7 @@ string ResolveSymbolName(const string requested)
    for(int i = 0; i < total; i++)
    {
       const string name = SymbolName(i, false);
-      if(SymbolNameMatchesRequest(name, requested) && SymbolSelect(name, true))
+      if(SymbolNameMatchesAnyRequest(name, requested, InpOilSymbolAliases) && SymbolSelect(name, true))
          return name;
    }
 
@@ -853,10 +879,10 @@ int OnInit()
    string requestedSymbol = InpSymbol;
    if(InpUseChartSymbolOnlyInTester && (bool)MQLInfoInteger(MQL_TESTER))
    {
-      if(InpStrictTesterSymbolGuard && !SymbolNameMatchesRequest(_Symbol, InpSymbol))
+      if(InpStrictTesterSymbolGuard && !SymbolNameMatchesAnyRequest(_Symbol, InpSymbol, InpOilSymbolAliases))
       {
-         PrintFormat("Tester symbol guard stopped the EA: chart/tester symbol '%s' does not match configured USOIL symbol '%s'.",
-                     _Symbol, InpSymbol);
+         PrintFormat("Tester symbol guard stopped the EA: chart/tester symbol '%s' is not in the configured WTI alias list '%s,%s'.",
+                     _Symbol, InpSymbol, InpOilSymbolAliases);
          return INIT_PARAMETERS_INCORRECT;
       }
 
