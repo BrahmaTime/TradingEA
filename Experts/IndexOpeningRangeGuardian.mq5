@@ -18,7 +18,8 @@ enum ENUM_RISK_BASIS
 enum ENUM_SIGNAL_MODE
 {
    SIGNAL_DIRECT_CLOSE    = 0,
-   SIGNAL_RETEST_REBREAK  = 1
+   SIGNAL_RETEST_REBREAK  = 1,
+   SIGNAL_FAILED_BREAK_REVERSAL = 2
 };
 
 enum ENUM_TRADE_DIRECTION
@@ -65,6 +66,8 @@ input double          InpBreakoutBufferAtr       = 0.03;                // Extra
 input double          InpRetestToleranceAtr      = 0.12;                // Boundary touch tolerance after first break
 input int             InpRetestMaxBars           = 12;                  // Bars allowed between break and retest/rebreak
 input double          InpMinRebreakBodyAtr       = 0.04;                // Rebreak candle body quality filter
+input double          InpFailureCloseInsideAtr   = 0.05;                // Failed-break close must return inside range by this ATR
+input double          InpFailureMaxExtensionAtr  = 1.20;                // Skip reversals after overextended false breaks
 
 input group "Range and cost filters"
 input double          InpMinRangeAtr             = 0.35;                // Skip very small opening ranges
@@ -140,6 +143,8 @@ struct SymbolState
    long     shortRetests;
    long     longRetestExpired;
    long     shortRetestExpired;
+   long     failedLongSignals;
+   long     failedShortSignals;
    long     trendRejectedLong;
    long     trendRejectedShort;
    long     volumeRejectedLong;
@@ -394,6 +399,8 @@ void ResetDiagnostics(SymbolState &state)
    state.shortRetests = 0;
    state.longRetestExpired = 0;
    state.shortRetestExpired = 0;
+   state.failedLongSignals = 0;
+   state.failedShortSignals = 0;
    state.trendRejectedLong = 0;
    state.trendRejectedShort = 0;
    state.volumeRejectedLong = 0;
@@ -772,10 +779,58 @@ bool RetestRebreakConfirmed(SymbolState &state,
    return false;
 }
 
+bool FailedBreakoutReversalConfirmed(SymbolState &state,
+                                     const bool isLong,
+                                     const double atr,
+                                     const MqlRates &lastClosed)
+{
+   if(!DirectionAllowed(isLong) || atr <= 0.0)
+      return false;
+
+   MqlRates rates[];
+   if(!GetLatestClosedBars(state.symbol, rates, 3))
+      return false;
+
+   const MqlRates previousClosed = rates[2];
+   const double closeInside = atr * InpFailureCloseInsideAtr;
+   const double maxExtension = atr * InpFailureMaxExtensionAtr;
+
+   if(isLong)
+   {
+      const bool priorDownBreak = previousClosed.close < state.rangeLow - atr * InpBreakoutBufferAtr;
+      const bool closedBackInside = lastClosed.close > state.rangeLow + closeInside && lastClosed.close < state.rangeHigh;
+      const bool notOverextended = (state.rangeLow - previousClosed.close) <= maxExtension;
+      const bool bullishBar = lastClosed.close > lastClosed.open;
+
+      if(priorDownBreak && closedBackInside && notOverextended && bullishBar)
+      {
+         state.failedLongSignals++;
+         return true;
+      }
+      return false;
+   }
+
+   const bool priorUpBreak = previousClosed.close > state.rangeHigh + atr * InpBreakoutBufferAtr;
+   const bool closedBackInside = lastClosed.close < state.rangeHigh - closeInside && lastClosed.close > state.rangeLow;
+   const bool notOverextended = (previousClosed.close - state.rangeHigh) <= maxExtension;
+   const bool bearishBar = lastClosed.close < lastClosed.open;
+
+   if(priorUpBreak && closedBackInside && notOverextended && bearishBar)
+   {
+      state.failedShortSignals++;
+      return true;
+   }
+
+   return false;
+}
+
 bool SignalConfirmed(SymbolState &state, const bool isLong, const double atr, const MqlRates &lastClosed)
 {
    if(!DirectionAllowed(isLong))
       return false;
+
+   if(InpSignalMode == SIGNAL_FAILED_BREAK_REVERSAL)
+      return FailedBreakoutReversalConfirmed(state, isLong, atr, lastClosed);
 
    if(InpSignalMode == SIGNAL_RETEST_REBREAK)
       return RetestRebreakConfirmed(state, isLong, atr, lastClosed);
@@ -1177,6 +1232,8 @@ void PrintDiagnostics()
       PrintFormat("%s diagnostics: retests_long=%I64d retests_short=%I64d retest_expired_long=%I64d retest_expired_short=%I64d",
                   state.symbol, state.longRetests, state.shortRetests,
                   state.longRetestExpired, state.shortRetestExpired);
+      PrintFormat("%s diagnostics: failed_break_long=%I64d failed_break_short=%I64d",
+                  state.symbol, state.failedLongSignals, state.failedShortSignals);
       PrintFormat("%s diagnostics: size_reject_long=%I64d size_reject_short=%I64d order_attempts=%I64d orders_opened=%I64d",
                   state.symbol, state.sizeRejectedLong, state.sizeRejectedShort,
                   state.orderAttempts, state.ordersOpened);
