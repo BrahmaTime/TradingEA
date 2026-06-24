@@ -87,6 +87,31 @@ If that symbol is not the one selected in Strategy Tester, reselect the intended
 symbol, clear any cached tester setup, and make sure the latest `.mq5` has been
 compiled into the `.ex5` being tested.
 
+## Presets
+
+MT5 Strategy Tester keeps old input values unless you reset them or load a set
+file. If a report still shows `InpUseVolumeFilter=true`, `InpMinAdx=18.0`, or
+`InpAllowMinLotIfRiskTooLow=false`, it is using an older saved configuration.
+
+Load one of these files from the Strategy Tester input tab:
+
+- `Presets/US30_M5_Tickmill_Recommended.set`
+  - Intended first-pass Tickmill US30 configuration.
+  - Disables the CFD tick-volume filter.
+  - Uses ADX 14 instead of 18.
+  - Allows minimum-lot trades only when estimated risk is capped.
+  - Slightly widens range/spread filters to avoid filtering nearly every day.
+- `Presets/US30_M5_Tickmill_SignalDiscovery.set`
+  - Diagnostic only, not a live preset.
+  - Loosens filters to confirm the EA can produce a meaningful sample size.
+  - Use this if the recommended preset still produces very few trades.
+
+Six trades over 18 months is not enough to evaluate a system. A useful next test
+should produce enough trades to compare win rate, average win/loss, drawdown, and
+profit factor across multiple market regimes. If the signal-discovery preset also
+produces very few trades, copy the diagnostics block from the journal because it
+will identify the remaining bottleneck.
+
 ## If a backtest shows zero trades
 
 Check the Strategy Tester journal for lines beginning with:
