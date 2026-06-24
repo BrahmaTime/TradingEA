@@ -156,6 +156,11 @@ int VolumeDigits(const double step)
    return digits;
 }
 
+int MaxInt(const int left, const int right)
+{
+   return left > right ? left : right;
+}
+
 double NormalizeVolume(const string symbol, const double requestedVolume)
 {
    const double minVol = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
@@ -293,7 +298,7 @@ bool BuildOpeningRange(SymbolState &state)
       return false;
 
    const int periodSeconds = PeriodSeconds(InpTradeTimeframe);
-   const int expectedBars = MathMax(1, (int)MathFloor((double)(InpOpeningRangeMinutes * 60) / (double)periodSeconds));
+   const int expectedBars = MaxInt(1, (int)MathFloor((double)(InpOpeningRangeMinutes * 60) / (double)periodSeconds));
 
    double high = 0.0;
    double low = 0.0;
@@ -328,11 +333,14 @@ bool BuildOpeningRange(SymbolState &state)
    state.rangeReady = (high > low);
 
    if(state.rangeReady)
-      PrintFormat("%s opening range ready: high=%.*f low=%.*f bars=%d",
+   {
+      const int digits = (int)SymbolInfoInteger(state.symbol, SYMBOL_DIGITS);
+      PrintFormat("%s opening range ready: high=%s low=%s bars=%d",
                   state.symbol,
-                  (int)SymbolInfoInteger(state.symbol, SYMBOL_DIGITS), state.rangeHigh,
-                  (int)SymbolInfoInteger(state.symbol, SYMBOL_DIGITS), state.rangeLow,
+                  DoubleToString(state.rangeHigh, digits),
+                  DoubleToString(state.rangeLow, digits),
                   validBars);
+   }
 
    return state.rangeReady;
 }
@@ -395,7 +403,7 @@ bool VolumePassesFilter(const string symbol, const bool isLong)
    if(!InpUseVolumeFilter)
       return true;
 
-   const int required = MathMax(3, InpVolumeLookbackBars + 2);
+   const int required = MaxInt(3, InpVolumeLookbackBars + 2);
    MqlRates rates[];
    if(!GetLatestClosedBars(symbol, rates, required))
       return false;
@@ -458,7 +466,7 @@ bool TrendPassesFilter(const SymbolState &state, const bool isLong, const MqlRat
 
 bool BreakoutConfirmed(const SymbolState &state, const bool isLong, const double atr)
 {
-   const int confirmations = MathMax(1, InpConfirmCloses);
+   const int confirmations = MaxInt(1, InpConfirmCloses);
    const int requiredBars = confirmations + 2;
    MqlRates rates[];
    if(!GetLatestClosedBars(state.symbol, rates, requiredBars))
@@ -631,10 +639,11 @@ void OpenBreakoutTrade(SymbolState &state, const bool isLong, const double atr)
       else
          state.shortTaken = true;
 
-      PrintFormat("%s %s opened volume=%.4f SL=%.*f TP=%.*f risk=%.2f%%",
+      const int digits = (int)SymbolInfoInteger(state.symbol, SYMBOL_DIGITS);
+      PrintFormat("%s %s opened volume=%.4f SL=%s TP=%s risk=%.2f%%",
                   state.symbol, isLong ? "long" : "short", volume,
-                  (int)SymbolInfoInteger(state.symbol, SYMBOL_DIGITS), stopLoss,
-                  (int)SymbolInfoInteger(state.symbol, SYMBOL_DIGITS), takeProfit,
+                  DoubleToString(stopLoss, digits),
+                  DoubleToString(takeProfit, digits),
                   InpRiskPercentPerTrade);
    }
    else
@@ -757,7 +766,7 @@ void ProcessSymbol(SymbolState &state)
       return;
 
    MqlRates rates[];
-   if(!GetLatestClosedBars(state.symbol, rates, MathMax(4, InpConfirmCloses + 3)))
+   if(!GetLatestClosedBars(state.symbol, rates, MaxInt(4, InpConfirmCloses + 3)))
       return;
 
    const datetime currentBarTime = rates[0].time;
@@ -917,7 +926,7 @@ int OnInit()
    }
 
    UpdateDailyRiskAnchor();
-   EventSetTimer(MathMax(1, InpTimerSeconds));
+   EventSetTimer(MaxInt(1, InpTimerSeconds));
    return INIT_SUCCEEDED;
 }
 
