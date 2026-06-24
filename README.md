@@ -162,10 +162,11 @@ Cross-symbol checks using the current short-only failed-break candidate:
 | --- | --- | ---: | ---: | ---: | ---: | --- |
 | US500 | 2026.01.01-2026.06.24 | 5 | 23.97 | 1.53 | 0.45% | Preliminary positive; weaker than US30. |
 | US500 | 2025.01.01-2025.12.31 | 9 | -27.08 | 0.77 | 0.54% | Negative; US500 not validated. |
+| USTEC | 2025.01.01-2025.12.31 | 4 | -35.11 | 0.47 | 0.66% | Negative; history quality was 0% real ticks. |
 
 Next validation priority:
 
-1. Test the short-only failed-break setup on USTEC for 2025 and 2026.
+1. Test the short-only failed-break setup on USTEC for 2026.
 2. Forward test the short-only US30 preset on demo before considering live use.
 3. Do not increase risk until the demo test confirms fills, spread behavior, and
    signal frequency in current market conditions.
