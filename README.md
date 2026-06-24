@@ -2,6 +2,56 @@
 
 ## Index Opening Range Guardian for MT5
 
+## USOIL M5 Safety Guardian for MT5
+
+`Experts/USOilM5SafetyGuardian.mq5` is a dedicated USOIL M5 Expert Advisor
+built for conservative intraday breakout trading with strict risk-first
+controls. It uses a retest-confirmed opening-range breakout model with:
+
+- M5 opening-range breakout with optional retest-rebreak confirmation
+- EMA 20/50 alignment plus M15 EMA 200 directional filter
+- ADX trend-strength filter (default threshold 22)
+- ATR-based range quality, stop distance, spread filter, and trailing
+- Optional tick-volume participation filter
+- EIA inventory blackout window (default Wednesday 17:25-17:45 server time)
+- Daily drawdown guard and fixed-fractional account-currency risk sizing
+- One-trade-per-day guard by default
+
+### Why this strategy shape for USOIL
+
+There is no strategy that is both guaranteed safe and guaranteed profitable.
+The design intentionally favors trade quality over trade frequency. It follows
+widely used crude-oil risk principles: avoid event-whipsaw windows, use
+ATR-normalized stops/sizing, and require trend-strength confirmation before
+breakout participation.
+
+Reference materials reviewed while designing this EA:
+
+- Investopedia: ADX trend-strength interpretation (trend filters)
+- Investopedia and ATR position-sizing references (volatility-sized risk)
+- U.S. EIA Weekly Petroleum Status Report schedule (10:30 ET release timing)
+- Multiple ORB/retest studies and practitioner writeups emphasizing retest
+  confirmation to reduce false breakouts
+
+### USOIL installation quick start
+
+1. Copy `Experts/USOilM5SafetyGuardian.mq5` into:
+   `MQL5/Experts/USOilM5SafetyGuardian.mq5`
+2. Compile in MetaEditor.
+3. Attach to a single USOIL chart on M5.
+4. Load `Presets/USOIL_M5_Tickmill_Conservative.set`.
+5. Confirm broker symbol naming (for example `USOIL`, `USOIL.cash`, etc.).
+6. Verify server-time alignment for:
+   - Session inputs
+   - EIA blackout window inputs
+
+### Tickmill / ZAR account note (USOIL EA)
+
+`USOilM5SafetyGuardian` calculates lot size using `OrderCalcProfit()` from
+entry to stop for 1 lot, then scales by your configured risk percent. MT5
+returns that in deposit currency, so risk is calculated in ZAR automatically
+for a Tickmill ZAR account.
+
 `Experts/IndexOpeningRangeGuardian.mq5` is a conservative MetaTrader 5 Expert
 Advisor designed for the M5 timeframe on US index CFDs:
 
