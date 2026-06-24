@@ -16,6 +16,8 @@ adds filters and risk controls:
 
 - 30-minute opening range by default
 - M5 candle-close breakout confirmation
+- Optional break-retest-rebreak confirmation to reduce false breakout chasing
+- Optional long-only, short-only, or both-direction operation
 - EMA 20/50 trend alignment
 - M15 EMA 200 directional filter
 - ADX directional-strength filter
@@ -97,20 +99,23 @@ Load one of these files from the Strategy Tester input tab:
 
 - `Presets/US30_M5_Tickmill_Recommended.set`
   - Intended first-pass Tickmill US30 configuration.
+  - Uses break-retest-rebreak confirmation rather than instant breakout entry.
   - Disables the CFD tick-volume filter.
   - Uses ADX 14 instead of 18.
   - Allows minimum-lot trades only when estimated risk is capped.
-  - Slightly widens range/spread filters to avoid filtering nearly every day.
+  - Uses later breakeven/trailing so winners have more room to develop.
 - `Presets/US30_M5_Tickmill_SignalDiscovery.set`
   - Diagnostic only, not a live preset.
+  - Uses direct breakout mode.
   - Loosens filters to confirm the EA can produce a meaningful sample size.
   - Use this if the recommended preset still produces very few trades.
 
-Six trades over 18 months is not enough to evaluate a system. A useful next test
-should produce enough trades to compare win rate, average win/loss, drawdown, and
-profit factor across multiple market regimes. If the signal-discovery preset also
-produces very few trades, copy the diagnostics block from the journal because it
-will identify the remaining bottleneck.
+The earlier direct-breakout recommended preset produced a larger sample but poor
+trade quality on US30: average losses were materially larger than average wins.
+The recommended preset now prioritizes cleaner entries and larger winner room,
+even if trade count falls. If the signal-discovery preset produces many trades
+but the recommended preset produces very few, copy the diagnostics block from the
+journal because it will identify which retest/filter gate is the bottleneck.
 
 ## If a backtest shows zero trades
 
@@ -126,6 +131,8 @@ The summary shows how many bars reached each gate:
 - `range_reject`: ATR/percent range filters rejected the day
 - `spread_reject`: spread filter blocked entries
 - `breakouts_long` / `breakouts_short`: valid ORB closes detected
+- `retests_long` / `retests_short`: retests detected after initial breaks
+- `retest_expired_*`: initial breaks that failed to retest/rebreak in time
 - `trend_reject_*`: EMA/ADX trend filters blocked detected breakouts
 - `volume_reject_*`: tick-volume filter blocked detected breakouts
 - `size_reject_*`: stop distance, broker stop-level, margin, or lot-size risk
