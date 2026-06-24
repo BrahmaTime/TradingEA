@@ -1,5 +1,120 @@
 # TradingEA
 
+## US Oil Trend Pullback Guardian for MT5
+
+`Experts/USOilTrendPullbackGuardian.mq5` is a conservative MetaTrader 5 Expert
+Advisor designed for the M5 timeframe on USOIL / WTI crude oil CFDs.
+
+The strategy is a rules-based trend pullback model:
+
+- EMA 20/50 trend alignment on M5
+- M15 EMA 200 higher-timeframe direction filter
+- ADX and DI trend-strength confirmation
+- Pullback candle must trade back toward EMA 20 without breaking too far beyond
+  EMA 50
+- Confirmation candle must close beyond the pullback candle by an ATR buffer
+- ATR-based stop-loss, take-profit, breakeven, and trailing stop
+- Spread and abnormal-volatility filters
+- Configurable Wednesday EIA oil-news guard
+- One trade per day by default
+- Fixed-fractional risk sizing in the account currency
+
+There is no such thing as a strategy that is both guaranteed safe and guaranteed
+profitable. Crude oil can move violently around inventory data, OPEC headlines,
+geopolitical events, and US session liquidity shifts. Treat this EA as a
+backtestable starting point, not as financial advice.
+
+## Why this USOIL strategy
+
+Public crude-oil strategy material consistently favors the same building blocks
+for intraday systems: trend filters, pullback entries instead of chasing extended
+moves, ATR-based stops, strict position sizing, and reduced exposure around major
+oil news. This EA turns those ideas into a simple MT5 ruleset that can be audited
+and tested before live use.
+
+The defaults intentionally favor drawdown control over trade frequency:
+
+- `InpRiskPercentPerTrade = 0.35`
+- `InpMaxDailyLossPercent = 1.20`
+- `InpOneTradePerDay = true`
+- `InpRewardRisk = 1.75`
+- `InpUseWeeklyOilNewsGuard = true`
+
+## Tickmill / ZAR account notes for USOIL
+
+The lot-size calculation uses `OrderCalcProfit()` to estimate the loss for 1 lot
+from entry to stop-loss. MT5 returns this in the deposit currency, so on a
+Tickmill ZAR account the risk amount is calculated in ZAR automatically.
+
+On smaller ZAR accounts, the calculated risk volume can fall below the broker's
+minimum lot. When `InpAllowMinLotIfRiskTooLow = true`, the EA only uses the
+minimum lot if the estimated stop-loss risk remains below
+`InpMaxMinLotRiskPercent`. If the minimum lot would risk too much ZAR, the EA
+skips the trade.
+
+## USOIL installation
+
+1. Copy `Experts/USOilTrendPullbackGuardian.mq5` into your MT5 data folder:
+   `MQL5/Experts/USOilTrendPullbackGuardian.mq5`
+2. Open MetaEditor.
+3. Compile the file.
+4. Attach it to a USOIL M5 chart or run it in Strategy Tester on USOIL M5.
+5. Ensure the USOIL symbol is visible in Market Watch.
+
+If Tickmill appends suffixes such as `.cash`, leave
+`InpAutoResolveSymbol = true`; otherwise set `InpSymbol` to the exact broker
+symbol.
+
+In MT5 Strategy Tester the EA defaults to `InpUseChartSymbolOnlyInTester = true`.
+This makes tests easier to interpret because the tester chart symbol is used even
+if your live input uses a different Tickmill suffix. The
+`InpStrictTesterSymbolGuard` input stops Strategy Tester initialization when the
+chart/tester symbol is not USOIL-like.
+
+## USOIL presets
+
+Load one of these files from the Strategy Tester input tab:
+
+- `Presets/USOIL_M5_Tickmill_Recommended.set`
+  - Intended first-pass Tickmill USOIL M5 configuration.
+  - Uses one trade per day, ADX 22, conservative ATR/spread filters, and a
+    Wednesday EIA news guard.
+  - Start with this preset for real-tick backtests and demo forward testing.
+- `Presets/USOIL_M5_Tickmill_SignalDiscovery.set`
+  - Diagnostic only, not a live preset.
+  - Loosens ADX, volatility, spread, and trade-frequency gates to confirm the EA
+    can produce a meaningful sample size on your broker feed.
+
+All session and news inputs are broker/server time. Tickmill server time may
+shift with daylight saving. Confirm the server time that corresponds to the
+liquid US oil session and the weekly EIA release before enabling live trading.
+
+If a backtest shows zero trades, check the Strategy Tester journal for:
+
+```text
+==== USOilTrendPullbackGuardian diagnostics ====
+```
+
+The diagnostics show whether trades are blocked by trend, pullback, news,
+spread, volatility, sizing, or order-send gates.
+
+## USOIL validation process
+
+1. Use "Every tick based on real ticks" if available.
+2. Test at least one trending period, one choppy period, and one high-news period.
+3. Validate that the configured EIA news window matches Tickmill server time.
+4. Optimize only a small set of inputs at a time:
+   - `InpMinAdx`
+   - `InpPullbackTouchAtr`
+   - `InpConfirmBufferAtr`
+   - `InpStopAtrMultiplier`
+   - `InpRewardRisk`
+   - session start/close times
+5. Reserve out-of-sample dates and forward test on demo before live use.
+
+Avoid curve fitting. A robust USOIL EA should survive realistic spreads,
+slippage, different volatility regimes, and unseen test periods.
+
 ## Index Opening Range Guardian for MT5
 
 `Experts/IndexOpeningRangeGuardian.mq5` is a conservative MetaTrader 5 Expert
