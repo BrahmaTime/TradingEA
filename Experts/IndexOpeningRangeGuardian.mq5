@@ -136,8 +136,8 @@ bool TesterChartSymbolAllowed(const string chartSymbol, const string configuredS
 string Trim(const string value)
 {
    string result = value;
-   result = StringTrimLeft(result);
-   result = StringTrimRight(result);
+   StringTrimLeft(result);
+   StringTrimRight(result);
    return result;
 }
 
@@ -540,7 +540,7 @@ bool VolumePassesFilter(SymbolState &state, const bool isLong)
    return true;
 }
 
-bool TrendPassesFilter(const SymbolState &state, const bool isLong, const MqlRates &lastClosed)
+bool TrendPassesFilter(SymbolState &state, const bool isLong, const MqlRates &lastClosed)
 {
    double fastEma = 0.0;
    double slowEma = 0.0;
