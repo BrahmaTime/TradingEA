@@ -134,10 +134,10 @@ Load one of these files from the Strategy Tester input tab:
 The earlier direct-breakout recommended preset produced a larger sample but poor
 trade quality on US30: average losses were materially larger than average wins.
 The retest-breakout preset reduced trade count and drawdown, but the reported
-US30 sample was still negative. The first failed-breakout reversal test was
-positive, but 17 trades is still a small sample. Before live use, validate it
-out-of-sample, test the long-only and short-only presets, and run the same
-configuration on US500 and USTEC.
+US30 sample was still negative. Failed-breakout reversal is the only family that
+has tested positively so far, and the short-only variant is stronger than the
+long-only variant. Before live use, validate the short-only preset on demo and
+run the same configuration on US500 and USTEC.
 
 ## Current validation notes
 
@@ -151,13 +151,13 @@ User-supplied Tickmill US30 M5 real-tick tests so far:
 | 2025.01.01-2025.12.30 | Failed-break reversal, short-only | 7 | 80.99 | 2.86 | 0.43% | Positive; still very small sample. |
 | 2025.01.01-2025.12.30 | Failed-break reversal, long-only | 2 | 21.94 | n/a | 0.00% | Positive but too few trades to infer edge. |
 | 2026.01.01-2026.06.24 | Failed-break reversal, short-only | 5 | 46.65 | 2.57 | 0.30% | Positive out-of-sample sub-period. |
+| 2026.01.01-2026.06.24 | Failed-break reversal, long-only | 3 | -14.07 | 0.65 | 0.40% | Negative; supports keeping US30 short-only. |
 
 Next validation priority:
 
-1. Test `US30_M5_Tickmill_FailedBreak_LongOnly.set` on 2026 only.
-2. Test `US30_M5_Tickmill_Recommended.set` on US500 and USTEC.
-3. Forward test the short-only US30 preset on demo before considering live use.
-4. Do not increase risk until the demo test confirms fills, spread behavior, and
+1. Test `US30_M5_Tickmill_Recommended.set` on US500 and USTEC.
+2. Forward test the short-only US30 preset on demo before considering live use.
+3. Do not increase risk until the demo test confirms fills, spread behavior, and
    signal frequency in current market conditions.
 
 ## If a backtest shows zero trades
