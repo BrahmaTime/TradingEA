@@ -110,10 +110,9 @@ Load one of these files from the Strategy Tester input tab:
   - Disables ADX because the reversal signal is not trend-continuation based.
   - Allows minimum-lot trades only when estimated risk is capped.
   - Uses lower per-trade risk and closer targets because it is a reversal style.
-- `Presets/US500_M5_Tickmill_Recommended.set`
-  - Same short-only failed-break candidate settings, named for US500 testing.
-  - The first 2026 US500 test was positive but weaker than US30, so this remains
-    a validation preset rather than a live-ready recommendation.
+- `Presets/US500_M5_Tickmill_FailedBreak_ShortOnly.set`
+  - Diagnostic preset using the same short-only failed-break settings on US500.
+  - US500 is not currently recommended: 2026 was positive, but 2025 was negative.
 - `Presets/US30_M5_Tickmill_SignalDiscovery.set`
   - Diagnostic only, not a live preset.
   - Uses direct breakout mode.
@@ -139,9 +138,9 @@ The earlier direct-breakout recommended preset produced a larger sample but poor
 trade quality on US30: average losses were materially larger than average wins.
 The retest-breakout preset reduced trade count and drawdown, but the reported
 US30 sample was still negative. Failed-breakout reversal is the only family that
-has tested positively so far, and the short-only variant is stronger than the
-long-only variant. Before live use, validate the short-only preset on demo and
-run the same configuration on US500 and USTEC.
+has tested positively so far on US30, and the short-only variant is stronger than
+the long-only variant. US500 did not validate across both sub-periods. Before
+live use, validate the US30 short-only preset on demo and test USTEC separately.
 
 ## Current validation notes
 
@@ -162,13 +161,13 @@ Cross-symbol checks using the current short-only failed-break candidate:
 | Symbol | Period | Trades | Net ZAR | Profit factor | Max balance DD | Notes |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
 | US500 | 2026.01.01-2026.06.24 | 5 | 23.97 | 1.53 | 0.45% | Preliminary positive; weaker than US30. |
+| US500 | 2025.01.01-2025.12.31 | 9 | -27.08 | 0.77 | 0.54% | Negative; US500 not validated. |
 
 Next validation priority:
 
-1. Test the short-only failed-break setup on US500 for 2025.
-2. Test the short-only failed-break setup on USTEC for 2025 and 2026.
-3. Forward test the short-only US30 preset on demo before considering live use.
-4. Do not increase risk until the demo test confirms fills, spread behavior, and
+1. Test the short-only failed-break setup on USTEC for 2025 and 2026.
+2. Forward test the short-only US30 preset on demo before considering live use.
+3. Do not increase risk until the demo test confirms fills, spread behavior, and
    signal frequency in current market conditions.
 
 ## If a backtest shows zero trades
