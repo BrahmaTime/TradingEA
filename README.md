@@ -49,12 +49,14 @@ Current FX validation notes:
 | Pair | Period | Preset | Trades | Net ZAR | Profit factor | Max balance DD | Notes |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
 | EURUSD | 2025.01.01-2025.12.31 | SignalDiscovery | 23 | 21.85 | 1.14 | 0.56% | Weak positive; confirms signal flow, not ready for demo. |
+| GBPUSD | 2025.01.01-2025.12.31 | SignalDiscovery | 17 | -63.80 | 0.62 | 0.99% | Negative overall; long side was especially weak. |
 
 Next FX validation priority:
 
 1. Test EURUSD 2025 with `FX_M1_Tickmill_Majors_Recommended.set`.
 2. Test EURUSD 2026 with both Recommended and SignalDiscovery presets.
-3. If EURUSD remains weak, move to GBPUSD before tuning inputs.
+3. If investigating GBPUSD further, isolate short-only first instead of tuning
+   the both-direction setup; the supplied GBPUSD run was not broadly viable.
 
 This EA is intentionally not grid, martingale, averaging-down, or recovery based.
 If a stop is hit, the loss is accepted and the EA waits for the next setup.
