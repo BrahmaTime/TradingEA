@@ -18,6 +18,7 @@ enum ENUM_RISK_BASIS
 input group "Symbols"
 input string          InpSymbols                 = "US30,US500,USTEC"; // Tickmill symbols; suffixes are auto-detected when possible
 input bool            InpAutoResolveSymbols      = true;                // Find broker suffix/prefix if exact name is unavailable
+input bool            InpUseChartSymbolOnlyInTester = true;             // Safer single-symbol MT5 strategy tests
 input ENUM_TIMEFRAMES InpTradeTimeframe          = PERIOD_M5;           // Strategy timeframe
 
 input group "Session - broker/server time"
@@ -37,8 +38,9 @@ input ENUM_TIMEFRAMES InpTrendTimeframe          = PERIOD_M15;
 input int             InpTrendEmaPeriod          = 200;
 input int             InpAtrPeriod               = 14;
 input int             InpAdxPeriod               = 14;
-input double          InpMinAdx                  = 18.0;
-input bool            InpUseVolumeFilter         = true;
+input bool            InpUseAdxFilter            = true;
+input double          InpMinAdx                  = 14.0;
+input bool            InpUseVolumeFilter         = false;                // CFD tick volume varies by broker; enable after testing
 input int             InpVolumeLookbackBars      = 20;
 input double          InpVolumeMultiplier        = 1.20;
 input int             InpConfirmCloses           = 1;                   // Closed M5 bars beyond the range
@@ -65,10 +67,14 @@ input double          InpRewardRisk              = 1.80;
 input double          InpMinStopAtr              = 0.80;                // Stop is at least this ATR distance
 input double          InpMaxStopAtr              = 3.00;                // Skip if required stop is wider than this ATR
 input double          InpStopBufferAtr           = 0.08;                // Buffer beyond opening range boundary
-input bool            InpAllowMinLotIfRiskTooLow = false;               // False keeps risk cap strict
+input bool            InpAllowMinLotIfRiskTooLow = true;                // Uses min lot only when bounded by next input
+input double          InpMaxMinLotRiskPercent    = 0.75;                // Max account risk allowed when min lot exceeds target
 input int             InpSlippagePoints          = 30;
 input int             InpMagicBase               = 503024;
 input int             InpTimerSeconds            = 2;
+
+input group "Diagnostics"
+input bool            InpPrintDiagnostics        = true;                // Prints tester gate counts on deinit
 
 input group "Trade management"
 input double          InpBreakevenAtR            = 1.00;
@@ -97,6 +103,22 @@ struct SymbolState
    bool     longTaken;
    bool     shortTaken;
    bool     initialized;
+   long     barsProcessed;
+   long     atrMissing;
+   long     rangeBuilt;
+   long     rangeDataMissing;
+   long     rangeRejected;
+   long     spreadRejected;
+   long     longBreakouts;
+   long     shortBreakouts;
+   long     trendRejectedLong;
+   long     trendRejectedShort;
+   long     volumeRejectedLong;
+   long     volumeRejectedShort;
+   long     sizeRejectedLong;
+   long     sizeRejectedShort;
+   long     orderAttempts;
+   long     ordersOpened;
 };
 
 CTrade      g_trade;
@@ -289,13 +311,36 @@ bool HasManagedPosition(const string symbol)
    return CountManagedPositions(symbol) > 0;
 }
 
+void ResetDiagnostics(SymbolState &state)
+{
+   state.barsProcessed = 0;
+   state.atrMissing = 0;
+   state.rangeBuilt = 0;
+   state.rangeDataMissing = 0;
+   state.rangeRejected = 0;
+   state.spreadRejected = 0;
+   state.longBreakouts = 0;
+   state.shortBreakouts = 0;
+   state.trendRejectedLong = 0;
+   state.trendRejectedShort = 0;
+   state.volumeRejectedLong = 0;
+   state.volumeRejectedShort = 0;
+   state.sizeRejectedLong = 0;
+   state.sizeRejectedShort = 0;
+   state.orderAttempts = 0;
+   state.ordersOpened = 0;
+}
+
 bool BuildOpeningRange(SymbolState &state)
 {
    MqlRates rangeRates[];
    ArraySetAsSeries(rangeRates, false);
    const int copied = CopyRates(state.symbol, InpTradeTimeframe, state.sessionStart, state.rangeEnd - 1, rangeRates);
    if(copied <= 0)
+   {
+      state.rangeDataMissing++;
       return false;
+   }
 
    const int periodSeconds = PeriodSeconds(InpTradeTimeframe);
    const int expectedBars = MaxInt(1, (int)MathFloor((double)(InpOpeningRangeMinutes * 60) / (double)periodSeconds));
@@ -340,15 +385,19 @@ bool BuildOpeningRange(SymbolState &state)
                   DoubleToString(state.rangeHigh, digits),
                   DoubleToString(state.rangeLow, digits),
                   validBars);
+      state.rangeBuilt++;
    }
 
    return state.rangeReady;
 }
 
-bool RangePassesFilters(const SymbolState &state, const double atr)
+bool RangePassesFilters(SymbolState &state, const double atr)
 {
    if(atr <= 0.0 || state.rangeHigh <= state.rangeLow)
+   {
+      state.rangeRejected++;
       return false;
+   }
 
    const double range = state.rangeHigh - state.rangeLow;
    const double midpoint = (state.rangeHigh + state.rangeLow) / 2.0;
@@ -359,6 +408,7 @@ bool RangePassesFilters(const SymbolState &state, const double atr)
    {
       PrintFormat("%s skipped: opening range %.2f ATR outside %.2f-%.2f",
                   state.symbol, rangeAtr, InpMinRangeAtr, InpMaxRangeAtr);
+      state.rangeRejected++;
       return false;
    }
 
@@ -366,47 +416,59 @@ bool RangePassesFilters(const SymbolState &state, const double atr)
    {
       PrintFormat("%s skipped: opening range %.2f%% exceeds %.2f%%",
                   state.symbol, rangePercent, InpMaxRangePercent);
+      state.rangeRejected++;
       return false;
    }
 
    return true;
 }
 
-bool SpreadPassesFilters(const string symbol, const double atr)
+bool SpreadPassesFilters(SymbolState &state, const double atr)
 {
    MqlTick tick;
-   if(!SymbolInfoTick(symbol, tick))
+   if(!SymbolInfoTick(state.symbol, tick))
+   {
+      state.spreadRejected++;
       return false;
+   }
 
-   const double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   const double point = SymbolInfoDouble(state.symbol, SYMBOL_POINT);
    const double spread = MathMax(0.0, tick.ask - tick.bid);
    const int spreadPoints = point > 0.0 ? (int)MathRound(spread / point) : 0;
 
    if(InpMaxSpreadPoints > 0 && spreadPoints > InpMaxSpreadPoints)
    {
-      PrintFormat("%s skipped: spread %d points exceeds %d", symbol, spreadPoints, InpMaxSpreadPoints);
+      PrintFormat("%s skipped: spread %d points exceeds %d", state.symbol, spreadPoints, InpMaxSpreadPoints);
+      state.spreadRejected++;
       return false;
    }
 
    if(InpMaxSpreadAtrPercent > 0.0 && atr > 0.0 && (spread / atr) * 100.0 > InpMaxSpreadAtrPercent)
    {
       PrintFormat("%s skipped: spread %.2f%% of ATR exceeds %.2f%%",
-                  symbol, (spread / atr) * 100.0, InpMaxSpreadAtrPercent);
+                  state.symbol, (spread / atr) * 100.0, InpMaxSpreadAtrPercent);
+      state.spreadRejected++;
       return false;
    }
 
    return true;
 }
 
-bool VolumePassesFilter(const string symbol, const bool isLong)
+bool VolumePassesFilter(SymbolState &state, const bool isLong)
 {
    if(!InpUseVolumeFilter)
       return true;
 
    const int required = MaxInt(3, InpVolumeLookbackBars + 2);
    MqlRates rates[];
-   if(!GetLatestClosedBars(symbol, rates, required))
+   if(!GetLatestClosedBars(state.symbol, rates, required))
+   {
+      if(isLong)
+         state.volumeRejectedLong++;
+      else
+         state.volumeRejectedShort++;
       return false;
+   }
 
    const long breakoutVolume = rates[1].tick_volume;
    double average = 0.0;
@@ -419,14 +481,24 @@ bool VolumePassesFilter(const string symbol, const bool isLong)
    }
 
    if(count <= 0 || average <= 0.0)
+   {
+      if(isLong)
+         state.volumeRejectedLong++;
+      else
+         state.volumeRejectedShort++;
       return false;
+   }
 
    average /= (double)count;
 
    if((double)breakoutVolume < average * InpVolumeMultiplier)
    {
       PrintFormat("%s %s skipped: tick volume %I64d below %.2fx average %.1f",
-                  symbol, isLong ? "long" : "short", breakoutVolume, InpVolumeMultiplier, average);
+                  state.symbol, isLong ? "long" : "short", breakoutVolume, InpVolumeMultiplier, average);
+      if(isLong)
+         state.volumeRejectedLong++;
+      else
+         state.volumeRejectedShort++;
       return false;
    }
 
@@ -452,16 +524,30 @@ bool TrendPassesFilter(const SymbolState &state, const bool isLong, const MqlRat
       return false;
    }
 
-   if(adx < InpMinAdx)
+   if(InpUseAdxFilter && adx < InpMinAdx)
    {
       PrintFormat("%s skipped: ADX %.2f below %.2f", state.symbol, adx, InpMinAdx);
+      if(isLong)
+         state.trendRejectedLong++;
+      else
+         state.trendRejectedShort++;
       return false;
    }
 
    if(isLong)
-      return fastEma > slowEma && lastClosed.close > fastEma && lastClosed.close > trendEma && plusDi > minusDi;
+   {
+      const bool passed = fastEma > slowEma && lastClosed.close > fastEma && lastClosed.close > trendEma &&
+                          (!InpUseAdxFilter || plusDi > minusDi);
+      if(!passed)
+         state.trendRejectedLong++;
+      return passed;
+   }
 
-   return fastEma < slowEma && lastClosed.close < fastEma && lastClosed.close < trendEma && minusDi > plusDi;
+   const bool passed = fastEma < slowEma && lastClosed.close < fastEma && lastClosed.close < trendEma &&
+                       (!InpUseAdxFilter || minusDi > plusDi);
+   if(!passed)
+      state.trendRejectedShort++;
+   return passed;
 }
 
 bool BreakoutConfirmed(const SymbolState &state, const bool isLong, const double atr)
@@ -524,6 +610,21 @@ bool CalculatePositionSize(const string symbol,
       PrintFormat("%s skipped: calculated volume %.4f below min %.4f; risk cap remains strict",
                   symbol, rawVolume, minVol);
       return false;
+   }
+
+   if(rawVolume < minVol && InpAllowMinLotIfRiskTooLow)
+   {
+      const double maxMinLotRiskMoney = RiskCapital() * InpMaxMinLotRiskPercent / 100.0;
+      const double minLotRiskMoney = oneLotLoss * minVol;
+      if(maxMinLotRiskMoney <= 0.0 || minLotRiskMoney > maxMinLotRiskMoney)
+      {
+         PrintFormat("%s skipped: min lot risk %.2f exceeds cap %.2f (%.2f%%)",
+                     symbol, minLotRiskMoney, maxMinLotRiskMoney, InpMaxMinLotRiskPercent);
+         return false;
+      }
+
+      PrintFormat("%s using min lot %.4f: target risk %.2f, estimated min-lot risk %.2f (cap %.2f%%)",
+                  symbol, minVol, riskMoney, minLotRiskMoney, InpMaxMinLotRiskPercent);
    }
 
    volume = NormalizeVolume(symbol, rawVolume);
@@ -604,6 +705,10 @@ void OpenBreakoutTrade(SymbolState &state, const bool isLong, const double atr)
    {
       PrintFormat("%s %s skipped: stop %.2f ATR exceeds max %.2f",
                   state.symbol, isLong ? "long" : "short", riskDistance / atr, InpMaxStopAtr);
+      if(isLong)
+         state.sizeRejectedLong++;
+      else
+         state.sizeRejectedShort++;
       return;
    }
 
@@ -615,19 +720,30 @@ void OpenBreakoutTrade(SymbolState &state, const bool isLong, const double atr)
    {
       PrintFormat("%s %s skipped: SL/TP too close for broker stop level",
                   state.symbol, isLong ? "long" : "short");
+      if(isLong)
+         state.sizeRejectedLong++;
+      else
+         state.sizeRejectedShort++;
       return;
    }
 
    double volume = 0.0;
    const ENUM_ORDER_TYPE orderType = isLong ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
    if(!CalculatePositionSize(state.symbol, orderType, entry, stopLoss, volume))
+   {
+      if(isLong)
+         state.sizeRejectedLong++;
+      else
+         state.sizeRejectedShort++;
       return;
+   }
 
    g_trade.SetExpertMagicNumber(state.magic);
    g_trade.SetDeviationInPoints(InpSlippagePoints);
    g_trade.SetTypeFillingBySymbol(state.symbol);
 
    const string comment = isLong ? "IORG ORB long" : "IORG ORB short";
+   state.orderAttempts++;
    const bool sent = isLong
                      ? g_trade.Buy(volume, state.symbol, 0.0, stopLoss, takeProfit, comment)
                      : g_trade.Sell(volume, state.symbol, 0.0, stopLoss, takeProfit, comment);
@@ -638,6 +754,7 @@ void OpenBreakoutTrade(SymbolState &state, const bool isLong, const double atr)
          state.longTaken = true;
       else
          state.shortTaken = true;
+      state.ordersOpened++;
 
       const int digits = (int)SymbolInfoInteger(state.symbol, SYMBOL_DIGITS);
       PrintFormat("%s %s opened volume=%.4f SL=%s TP=%s risk=%.2f%%",
@@ -773,6 +890,7 @@ void ProcessSymbol(SymbolState &state)
    if(state.lastBarTime == currentBarTime)
       return;
    state.lastBarTime = currentBarTime;
+   state.barsProcessed++;
 
    if(state.sessionStart == 0 || currentBarTime >= state.sessionStart + 24 * 60 * 60)
       ResetSession(state, currentBarTime);
@@ -785,7 +903,10 @@ void ProcessSymbol(SymbolState &state)
 
    double atr = 0.0;
    if(!GetBufferValue(state.atrHandle, 0, 1, atr) || atr <= 0.0)
+   {
+      state.atrMissing++;
       return;
+   }
 
    if(!state.rangeReady && !BuildOpeningRange(state))
       return;
@@ -793,25 +914,60 @@ void ProcessSymbol(SymbolState &state)
    if(currentBarTime > state.entryCutoff)
       return;
 
-   if(!RangePassesFilters(state, atr) || !SpreadPassesFilters(state.symbol, atr))
+   if(!RangePassesFilters(state, atr) || !SpreadPassesFilters(state, atr))
       return;
 
    const MqlRates lastClosed = rates[1];
 
-   if(BreakoutConfirmed(state, true, atr) &&
-      TrendPassesFilter(state, true, lastClosed) &&
-      VolumePassesFilter(state.symbol, true))
+   if(BreakoutConfirmed(state, true, atr))
    {
-      OpenBreakoutTrade(state, true, atr);
-      return;
+      state.longBreakouts++;
+      if(TrendPassesFilter(state, true, lastClosed) &&
+         VolumePassesFilter(state, true))
+      {
+         OpenBreakoutTrade(state, true, atr);
+         return;
+      }
    }
 
-   if(BreakoutConfirmed(state, false, atr) &&
-      TrendPassesFilter(state, false, lastClosed) &&
-      VolumePassesFilter(state.symbol, false))
+   if(BreakoutConfirmed(state, false, atr))
    {
-      OpenBreakoutTrade(state, false, atr);
+      state.shortBreakouts++;
+      if(TrendPassesFilter(state, false, lastClosed) &&
+         VolumePassesFilter(state, false))
+      {
+         OpenBreakoutTrade(state, false, atr);
+      }
    }
+}
+
+void PrintDiagnostics()
+{
+   if(!InpPrintDiagnostics)
+      return;
+
+   Print("==== IndexOpeningRangeGuardian diagnostics ====");
+   for(int i = 0; i < ArraySize(g_states); i++)
+   {
+      SymbolState state = g_states[i];
+      if(!state.initialized)
+      {
+         PrintFormat("%s diagnostics: not initialized", state.requested);
+         continue;
+      }
+
+      PrintFormat("%s diagnostics: bars=%I64d atr_missing=%I64d ranges=%I64d range_data_missing=%I64d range_reject=%I64d spread_reject=%I64d",
+                  state.symbol, state.barsProcessed, state.atrMissing, state.rangeBuilt,
+                  state.rangeDataMissing, state.rangeRejected, state.spreadRejected);
+      PrintFormat("%s diagnostics: breakouts_long=%I64d breakouts_short=%I64d trend_reject_long=%I64d trend_reject_short=%I64d volume_reject_long=%I64d volume_reject_short=%I64d",
+                  state.symbol, state.longBreakouts, state.shortBreakouts,
+                  state.trendRejectedLong, state.trendRejectedShort,
+                  state.volumeRejectedLong, state.volumeRejectedShort);
+      PrintFormat("%s diagnostics: size_reject_long=%I64d size_reject_short=%I64d order_attempts=%I64d orders_opened=%I64d",
+                  state.symbol, state.sizeRejectedLong, state.sizeRejectedShort,
+                  state.orderAttempts, state.ordersOpened);
+   }
+   Print("==== End diagnostics ====");
 }
 
 void ProcessAllSymbols()
@@ -849,8 +1005,15 @@ int OnInit()
    if(InpTradeTimeframe != PERIOD_M5)
       Print("Warning: this EA was designed for PERIOD_M5. Backtest carefully after changing timeframe.");
 
+   string symbolList = InpSymbols;
+   if(InpUseChartSymbolOnlyInTester && (bool)MQLInfoInteger(MQL_TESTER))
+   {
+      symbolList = _Symbol;
+      PrintFormat("Tester mode detected. Using chart symbol only: %s", symbolList);
+   }
+
    string parts[];
-   const int count = StringSplit(InpSymbols, ',', parts);
+   const int count = StringSplit(symbolList, ',', parts);
    if(count <= 0)
    {
       Print("No symbols configured.");
@@ -886,6 +1049,7 @@ int OnInit()
       state.longTaken       = false;
       state.shortTaken      = false;
       state.initialized     = false;
+      ResetDiagnostics(state);
 
       if(!SymbolSelect(state.symbol, true))
       {
@@ -932,6 +1096,7 @@ int OnInit()
 
 void OnDeinit(const int reason)
 {
+   PrintDiagnostics();
    EventKillTimer();
 
    for(int i = 0; i < ArraySize(g_states); i++)

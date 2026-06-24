@@ -40,10 +40,13 @@ Default risk is intentionally modest:
 - `InpRiskPercentPerTrade = 0.35`
 - `InpMaxDailyLossPercent = 1.20`
 - `InpMaxPortfolioPositions = 3`
+- `InpMaxMinLotRiskPercent = 0.75`
 
-If the calculated volume is below the broker's minimum lot, the EA skips the
-trade by default instead of exceeding the configured risk. You can change this
-with `InpAllowMinLotIfRiskTooLow`, but leaving it `false` is safer.
+If the calculated volume is below the broker's minimum lot, the EA can use the
+broker minimum lot only when the estimated stop-loss risk remains below
+`InpMaxMinLotRiskPercent`. This matters on a 10,000 ZAR account because a 0.35%
+target risk is only R35, and US index CFD minimum-lot risk can be slightly above
+that. If the minimum-lot risk is too high, the EA still skips the trade.
 
 ## Installation
 
@@ -63,6 +66,35 @@ US30,US500,USTEC
 If Tickmill appends suffixes such as `.cash`, leave
 `InpAutoResolveSymbols = true`; otherwise edit `InpSymbols` to the exact broker
 names.
+
+In MT5 Strategy Tester the EA defaults to `InpUseChartSymbolOnlyInTester = true`.
+This makes single-symbol tests easier to interpret and avoids missing-history
+issues from other symbols in `InpSymbols`. For live trading, attach the EA to one
+chart and leave `InpSymbols` configured with all instruments you want scanned.
+
+## If a backtest shows zero trades
+
+Check the Strategy Tester journal for lines beginning with:
+
+```text
+==== IndexOpeningRangeGuardian diagnostics ====
+```
+
+The summary shows how many bars reached each gate:
+
+- `ranges`: opening ranges successfully built
+- `range_reject`: ATR/percent range filters rejected the day
+- `spread_reject`: spread filter blocked entries
+- `breakouts_long` / `breakouts_short`: valid ORB closes detected
+- `trend_reject_*`: EMA/ADX trend filters blocked detected breakouts
+- `volume_reject_*`: tick-volume filter blocked detected breakouts
+- `size_reject_*`: stop distance, broker stop-level, margin, or lot-size risk
+  blocked detected breakouts
+- `order_attempts` / `orders_opened`: actual trade sends and accepted trades
+
+For Tickmill CFD data, the volume filter is disabled by default because tick
+volume behavior varies by broker. Enable it only after confirming it does not
+filter out nearly every valid breakout.
 
 ## Important setup inputs
 
