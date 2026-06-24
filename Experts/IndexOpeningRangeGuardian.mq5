@@ -19,6 +19,7 @@ input group "Symbols"
 input string          InpSymbols                 = "US30,US500,USTEC"; // Tickmill symbols; suffixes are auto-detected when possible
 input bool            InpAutoResolveSymbols      = true;                // Find broker suffix/prefix if exact name is unavailable
 input bool            InpUseChartSymbolOnlyInTester = true;             // Safer single-symbol MT5 strategy tests
+input bool            InpStrictTesterSymbolList  = true;                // Abort tester if chart symbol is not in InpSymbols
 input ENUM_TIMEFRAMES InpTradeTimeframe          = PERIOD_M5;           // Strategy timeframe
 
 input group "Session - broker/server time"
@@ -126,6 +127,9 @@ SymbolState g_states[];
 datetime    g_riskDayStart = 0;
 double      g_dayStartEquity = 0.0;
 
+bool SymbolNameMatchesRequest(const string symbolName, const string requested);
+bool TesterChartSymbolAllowed(const string chartSymbol, const string configuredSymbols);
+
 //+------------------------------------------------------------------+
 //| Utility functions                                                |
 //+------------------------------------------------------------------+
@@ -213,11 +217,42 @@ string ResolveSymbolName(const string requested)
    for(int i = 0; i < total; i++)
    {
       const string name = SymbolName(i, false);
-      if(StringFind(name, requested) >= 0 && SymbolSelect(name, true))
+      if(SymbolNameMatchesRequest(name, requested) && SymbolSelect(name, true))
          return name;
    }
 
    return requested;
+}
+
+bool SymbolNameMatchesRequest(const string symbolName, const string requested)
+{
+   if(symbolName == requested)
+      return true;
+
+   const int requestedLength = StringLen(requested);
+   const int symbolLength = StringLen(symbolName);
+   if(requestedLength <= 0 || symbolLength < requestedLength)
+      return false;
+
+   if(StringFind(symbolName, requested) == 0)
+      return true;
+
+   const int suffixPosition = symbolLength - requestedLength;
+   return StringFind(symbolName, requested, suffixPosition) == suffixPosition;
+}
+
+bool TesterChartSymbolAllowed(const string chartSymbol, const string configuredSymbols)
+{
+   string parts[];
+   const int count = StringSplit(configuredSymbols, ',', parts);
+   for(int i = 0; i < count; i++)
+   {
+      const string requested = Trim(parts[i]);
+      if(requested != "" && SymbolNameMatchesRequest(chartSymbol, requested))
+         return true;
+   }
+
+   return false;
 }
 
 bool GetBufferValue(const int handle, const int buffer, const int shift, double &value)
@@ -1008,6 +1043,14 @@ int OnInit()
    string symbolList = InpSymbols;
    if(InpUseChartSymbolOnlyInTester && (bool)MQLInfoInteger(MQL_TESTER))
    {
+      PrintFormat("Tester mode detected. MT5 chart/tester symbol=%s, configured symbols=%s", _Symbol, InpSymbols);
+      if(InpStrictTesterSymbolList && !TesterChartSymbolAllowed(_Symbol, InpSymbols))
+      {
+         PrintFormat("Tester symbol guard stopped the EA: chart/tester symbol '%s' is not listed in InpSymbols '%s'. Select the intended Strategy Tester symbol or update InpSymbols.",
+                     _Symbol, InpSymbols);
+         return INIT_PARAMETERS_INCORRECT;
+      }
+
       symbolList = _Symbol;
       PrintFormat("Tester mode detected. Using chart symbol only: %s", symbolList);
    }

@@ -72,6 +72,21 @@ This makes single-symbol tests easier to interpret and avoids missing-history
 issues from other symbols in `InpSymbols`. For live trading, attach the EA to one
 chart and leave `InpSymbols` configured with all instruments you want scanned.
 
+The tester also defaults to `InpStrictTesterSymbolList = true`. If MT5 reports a
+chart/tester symbol that is not listed in `InpSymbols`, the EA aborts during
+initialization and prints a clear journal message. This prevents accidental tests
+or trades on unrelated broker symbols such as AFRICA40 when you intended US30.
+
+At startup, check the journal for:
+
+```text
+Tester mode detected. MT5 chart/tester symbol=...
+```
+
+If that symbol is not the one selected in Strategy Tester, reselect the intended
+symbol, clear any cached tester setup, and make sure the latest `.mq5` has been
+compiled into the `.ex5` being tested.
+
 ## If a backtest shows zero trades
 
 Check the Strategy Tester journal for lines beginning with:
