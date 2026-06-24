@@ -99,29 +99,41 @@ file. If a report still shows `InpUseVolumeFilter=true`, `InpMinAdx=18.0`, or
 Load one of these files from the Strategy Tester input tab:
 
 - `Presets/US30_M5_Tickmill_Recommended.set`
-  - Intended first-pass Tickmill US30 configuration.
-  - Uses break-retest-rebreak confirmation rather than instant breakout entry.
+  - Current US30 Tickmill candidate configuration.
+  - Uses failed-breakout reversal mode (`InpSignalMode=2`) rather than breakout
+    continuation.
+  - Based on the first positive Tickmill US30 M5 test in this repo's iteration:
+    17 trades, profit factor 2.19, net +139.00 ZAR, max balance drawdown 0.35%.
   - Disables the CFD tick-volume filter.
-  - Uses ADX 14 instead of 18.
+  - Disables ADX because the reversal signal is not trend-continuation based.
   - Allows minimum-lot trades only when estimated risk is capped.
-  - Uses later breakeven/trailing so winners have more room to develop.
+  - Uses lower per-trade risk and closer targets because it is a reversal style.
 - `Presets/US30_M5_Tickmill_SignalDiscovery.set`
   - Diagnostic only, not a live preset.
   - Uses direct breakout mode.
   - Loosens filters to confirm the EA can produce a meaningful sample size.
   - Use this if the recommended preset still produces very few trades.
 - `Presets/US30_M5_Tickmill_FailedBreakReversal.set`
-  - Experimental diagnostic preset, not a live preset.
-  - Tests the opposite hypothesis: failed ORB breaks that close back inside the
-    range may be better mean-reversion entries than breakout continuation.
-  - Uses lower per-trade risk and closer targets because it is a reversal style.
+  - Same signal family as the recommended preset; kept as an explicit named
+    preset for failed-break testing.
+- `Presets/US30_M5_Tickmill_FailedBreak_LongOnly.set`
+  - Same failed-break settings, but only trades failed downside breaks as long
+    reversals.
+- `Presets/US30_M5_Tickmill_FailedBreak_ShortOnly.set`
+  - Same failed-break settings, but only trades failed upside breaks as short
+    reversals.
+- `Presets/US30_M5_Tickmill_RetestContinuation.set`
+  - Diagnostic comparison preset, not a live preset.
+  - Preserves the retest-continuation configuration that tested negative on the
+    supplied Tickmill US30 sample.
 
 The earlier direct-breakout recommended preset produced a larger sample but poor
 trade quality on US30: average losses were materially larger than average wins.
 The retest-breakout preset reduced trade count and drawdown, but the reported
-US30 sample was still negative. This is evidence that breakout continuation may
-not have an edge on the tested Tickmill US30 feed. The failed-breakout reversal
-preset is the next hypothesis to test before abandoning ORB on this symbol.
+US30 sample was still negative. The first failed-breakout reversal test was
+positive, but 17 trades is still a small sample. Before live use, validate it
+out-of-sample, test the long-only and short-only presets, and run the same
+configuration on US500 and USTEC.
 
 ## If a backtest shows zero trades
 
