@@ -145,11 +145,12 @@ User-supplied Tickmill US30 M5 real-tick tests so far:
 | 2025.01.01-2026.06.30 | Retest continuation | 22 | -225.83 | 0.44 | 2.48% | Cleaner but still negative. |
 | 2025.01.01-2026.06.30 | Failed-break reversal, both directions | 17 | 139.00 | 2.19 | 0.35% | Promising but small sample. |
 | 2025.01.01-2025.12.30 | Failed-break reversal, short-only | 7 | 80.99 | 2.86 | 0.43% | Positive; still very small sample. |
+| 2025.01.01-2025.12.30 | Failed-break reversal, long-only | 2 | 21.94 | n/a | 0.00% | Positive but too few trades to infer edge. |
 
 Next validation priority:
 
 1. Test `US30_M5_Tickmill_FailedBreak_ShortOnly.set` on 2026 only.
-2. Test `US30_M5_Tickmill_FailedBreak_LongOnly.set` on 2025 and 2026 separately.
+2. Test `US30_M5_Tickmill_FailedBreak_LongOnly.set` on 2026 only.
 3. Test `US30_M5_Tickmill_Recommended.set` on US500 and USTEC.
 4. Only consider demo forward testing if the edge survives at least one
    out-of-sample period and is not carried by one isolated lucky trade.
