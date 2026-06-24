@@ -52,6 +52,34 @@ entry to stop for 1 lot, then scales by your configured risk percent. MT5
 returns that in deposit currency, so risk is calculated in ZAR automatically
 for a Tickmill ZAR account.
 
+## USOIL M5 Trend Pullback Guardian (alternate variant)
+
+`Experts/USOilM5TrendPullbackGuardian.mq5` is a second-pass strategy variant
+for A/B testing against the opening-range model. It trades trend continuation
+instead of session-range breakouts:
+
+- Trend stack filter: EMA 20/50 alignment with M15 EMA 200 direction
+- Momentum/strength gate: ADX + DI confirmation and RSI regime filter
+- Entry style: pullback toward EMA 50, then close-based breakout of recent
+  structure (`InpBreakoutLookbackBars`)
+- Volatility-normalized stops and account-currency risk sizing
+- Same risk architecture: daily loss guard, EIA blackout window, optional
+  one-trade-per-day guard
+
+Recommended preset:
+
+- `Presets/USOIL_M5_Tickmill_TrendPullback_Conservative.set`
+
+Usage:
+
+1. Copy `Experts/USOilM5TrendPullbackGuardian.mq5` into:
+   `MQL5/Experts/USOilM5TrendPullbackGuardian.mq5`
+2. Compile in MetaEditor.
+3. Attach to a single USOIL M5 chart.
+4. Load `Presets/USOIL_M5_Tickmill_TrendPullback_Conservative.set`.
+5. Compare this variant vs `USOilM5SafetyGuardian` in Strategy Tester over the
+   same date ranges and spread assumptions.
+
 `Experts/IndexOpeningRangeGuardian.mq5` is a conservative MetaTrader 5 Expert
 Advisor designed for the M5 timeframe on US index CFDs:
 
