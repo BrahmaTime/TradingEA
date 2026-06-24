@@ -1,5 +1,52 @@
 # TradingEA
 
+## FX Pulse Scalper Guardian for MT5
+
+`Experts/FxPulseScalperGuardian.mq5` is a separate currency-pair scalping EA. It
+does not use the index opening-range logic. The default preset is designed for
+major FX pairs on M1 during the liquid London/New York overlap:
+
+- EURUSD
+- GBPUSD
+- USDJPY
+- AUDUSD
+- USDCAD
+
+The strategy is a trend-aligned pullback scalper:
+
+- M15 EMA 200 defines higher-timeframe bias
+- M1 EMA 20/50 defines local trend
+- RSI pullback/recovery confirms the entry pulse
+- ATR filters avoid dead or extreme volatility
+- spread filters block expensive scalps
+- cooldown and max-trades-per-day prevent overtrading
+- ATR-based stop, take-profit, breakeven, trailing, and max-position-time exits
+- risk sizing uses `OrderCalcProfit()`, so Tickmill ZAR account risk is
+  calculated in ZAR
+
+Available FX presets:
+
+- `Presets/FX_M1_Tickmill_Majors_Recommended.set`
+  - Conservative first-pass preset.
+  - Use for pair-by-pair real-tick backtests before any demo use.
+- `Presets/FX_M1_Tickmill_Majors_SignalDiscovery.set`
+  - Diagnostic preset with looser filters and lower risk.
+  - Use only to check whether a pair produces enough candidate trades.
+
+Recommended FX validation workflow:
+
+1. Compile `FxPulseScalperGuardian.mq5` in MetaEditor.
+2. Backtest one pair at a time with real ticks, starting with EURUSD and GBPUSD.
+3. Use the recommended preset first.
+4. If trade count is near zero, run the signal-discovery preset and inspect the
+   diagnostics block.
+5. Do not optimize many inputs at once. If a pair is negative in two separate
+   sub-periods, drop that pair instead of curve-fitting it.
+6. Only demo forward-test pairs that remain positive across separate periods.
+
+This EA is intentionally not grid, martingale, averaging-down, or recovery based.
+If a stop is hit, the loss is accepted and the EA waits for the next setup.
+
 ## Index Opening Range Guardian for MT5
 
 `Experts/IndexOpeningRangeGuardian.mq5` is a conservative MetaTrader 5 Expert
