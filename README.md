@@ -45,6 +45,12 @@ Reference materials reviewed while designing this EA:
    - Session inputs
    - EIA blackout window inputs
 
+If Strategy Tester does not start:
+
+- Recompile the EA in MetaEditor so the latest `.mq5` changes are used.
+- Load the latest preset files (both now default `InpStrictTesterSymbol=false`).
+- In the tester journal, check initialization lines for symbol/indicator warnings.
+
 ### Tickmill / ZAR account note (USOIL EA)
 
 `USOilM5SafetyGuardian` calculates lot size using `OrderCalcProfit()` from

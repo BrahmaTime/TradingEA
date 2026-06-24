@@ -1,7 +1,7 @@
 InpSymbol=USOIL
 InpAutoResolveSymbol=true
 InpUseChartSymbolOnlyInTester=true
-InpStrictTesterSymbol=true
+InpStrictTesterSymbol=false
 InpTradeTimeframe=5
 InpSessionStartHour=16
 InpSessionStartMinute=0

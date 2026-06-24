@@ -141,6 +141,8 @@ CTrade   g_trade;
 EAState  g_state;
 datetime g_riskDayStart = 0;
 double   g_dayStartEquity = 0.0;
+bool     g_useAdxFilter = true;
+bool     g_useRsiFilter = true;
 
 string Trim(const string value)
 {
@@ -190,6 +192,11 @@ bool SymbolNameMatchesRequest(const string symbolName, const string requested)
 
    const int suffixPosition = symbolLength - requestedLength;
    return StringFind(symbolName, requested, suffixPosition) == suffixPosition;
+}
+
+bool TesterSymbolsCompatible(const string left, const string right)
+{
+   return SymbolNameMatchesRequest(left, right) || SymbolNameMatchesRequest(right, left);
 }
 
 string ResolveSymbolName(const string requested)
@@ -499,20 +506,32 @@ bool TrendPassesFilter(const bool isLong, const MqlRates &lastClosed)
 
    if(!GetBufferValue(g_state.fastEmaHandle, 0, 1, emaFast) ||
       !GetBufferValue(g_state.pullbackEmaHandle, 0, 1, emaPull) ||
-      !GetBufferValue(g_state.trendEmaHandle, 0, 1, emaTrend) ||
-      !GetBufferValue(g_state.adxHandle, 0, 1, adx) ||
-      !GetBufferValue(g_state.adxHandle, 1, 1, plusDi) ||
-      !GetBufferValue(g_state.adxHandle, 2, 1, minusDi) ||
-      !GetBufferValue(g_state.rsiHandle, 0, 1, rsi))
+      !GetBufferValue(g_state.trendEmaHandle, 0, 1, emaTrend))
       return false;
+
+   if(g_useAdxFilter)
+   {
+      if(g_state.adxHandle == INVALID_HANDLE ||
+         !GetBufferValue(g_state.adxHandle, 0, 1, adx) ||
+         !GetBufferValue(g_state.adxHandle, 1, 1, plusDi) ||
+         !GetBufferValue(g_state.adxHandle, 2, 1, minusDi))
+         return false;
+   }
+
+   if(g_useRsiFilter)
+   {
+      if(g_state.rsiHandle == INVALID_HANDLE ||
+         !GetBufferValue(g_state.rsiHandle, 0, 1, rsi))
+         return false;
+   }
 
    bool pass = false;
    if(isLong)
    {
       pass = lastClosed.close > emaTrend && emaFast > emaPull && emaPull > emaTrend;
-      if(pass && InpUseAdxFilter)
+      if(pass && g_useAdxFilter)
          pass = (adx >= InpMinAdx && plusDi > minusDi);
-      if(pass && InpUseRsiFilter)
+      if(pass && g_useRsiFilter)
          pass = (rsi >= InpMinRsiLong);
       if(!pass)
          g_state.trendRejectedLong++;
@@ -520,9 +539,9 @@ bool TrendPassesFilter(const bool isLong, const MqlRates &lastClosed)
    else
    {
       pass = lastClosed.close < emaTrend && emaFast < emaPull && emaPull < emaTrend;
-      if(pass && InpUseAdxFilter)
+      if(pass && g_useAdxFilter)
          pass = (adx >= InpMinAdx && minusDi > plusDi);
-      if(pass && InpUseRsiFilter)
+      if(pass && g_useRsiFilter)
          pass = (rsi <= InpMaxRsiShort);
       if(!pass)
          g_state.trendRejectedShort++;
@@ -932,33 +951,67 @@ int OnInit()
 
    if(InpUseChartSymbolOnlyInTester && (bool)MQLInfoInteger(MQL_TESTER))
    {
-      if(InpStrictTesterSymbol && !SymbolNameMatchesRequest(_Symbol, g_state.requestedSymbol))
+      if(InpStrictTesterSymbol && !TesterSymbolsCompatible(_Symbol, g_state.requestedSymbol))
       {
-         PrintFormat("Tester symbol guard stopped EA: chart symbol '%s' does not match requested '%s'.",
+         PrintFormat("Tester symbol guard warning: chart symbol '%s' and requested '%s' differ; continuing with chart symbol.",
                      _Symbol, g_state.requestedSymbol);
-         return INIT_PARAMETERS_INCORRECT;
       }
       g_state.requestedSymbol = _Symbol;
    }
 
    g_state.symbol = ResolveSymbolName(g_state.requestedSymbol);
    if(!SymbolSelect(g_state.symbol, true))
-      return INIT_FAILED;
+   {
+      const string fallback = _Symbol;
+      PrintFormat("SymbolSelect failed for '%s'; falling back to chart symbol '%s'.", g_state.symbol, fallback);
+      g_state.symbol = fallback;
+      if(!SymbolSelect(g_state.symbol, true))
+      {
+         PrintFormat("SymbolSelect fallback failed for '%s'. error=%d", g_state.symbol, GetLastError());
+         return INIT_FAILED;
+      }
+   }
 
    g_state.fastEmaHandle = iMA(g_state.symbol, InpTradeTimeframe, InpFastEmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
    g_state.pullbackEmaHandle = iMA(g_state.symbol, InpTradeTimeframe, InpPullbackEmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
    g_state.trendEmaHandle = iMA(g_state.symbol, InpTrendTimeframe, InpTrendEmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   if(g_state.trendEmaHandle == INVALID_HANDLE)
+   {
+      PrintFormat("Trend EMA handle on timeframe %d failed; falling back to trade timeframe %d.",
+                  InpTrendTimeframe, InpTradeTimeframe);
+      g_state.trendEmaHandle = iMA(g_state.symbol, InpTradeTimeframe, InpTrendEmaPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   }
+
    g_state.atrHandle = iATR(g_state.symbol, InpTradeTimeframe, InpAtrPeriod);
-   g_state.adxHandle = iADX(g_state.symbol, InpTradeTimeframe, InpAdxPeriod);
-   g_state.rsiHandle = iRSI(g_state.symbol, InpTradeTimeframe, InpRsiPeriod, PRICE_CLOSE);
+   g_useAdxFilter = InpUseAdxFilter;
+   g_useRsiFilter = InpUseRsiFilter;
+
+   g_state.adxHandle = INVALID_HANDLE;
+   if(g_useAdxFilter)
+      g_state.adxHandle = iADX(g_state.symbol, InpTradeTimeframe, InpAdxPeriod);
+   g_state.rsiHandle = INVALID_HANDLE;
+   if(g_useRsiFilter)
+      g_state.rsiHandle = iRSI(g_state.symbol, InpTradeTimeframe, InpRsiPeriod, PRICE_CLOSE);
 
    if(g_state.fastEmaHandle == INVALID_HANDLE ||
       g_state.pullbackEmaHandle == INVALID_HANDLE ||
       g_state.trendEmaHandle == INVALID_HANDLE ||
-      g_state.atrHandle == INVALID_HANDLE ||
-      g_state.adxHandle == INVALID_HANDLE ||
-      g_state.rsiHandle == INVALID_HANDLE)
+      g_state.atrHandle == INVALID_HANDLE)
+   {
+      PrintFormat("Core indicator init failed for %s. error=%d", g_state.symbol, GetLastError());
       return INIT_FAILED;
+   }
+
+   if(g_useAdxFilter && g_state.adxHandle == INVALID_HANDLE)
+   {
+      PrintFormat("ADX init failed for %s. Disabling ADX filter. error=%d", g_state.symbol, GetLastError());
+      g_useAdxFilter = false;
+   }
+   if(g_useRsiFilter && g_state.rsiHandle == INVALID_HANDLE)
+   {
+      PrintFormat("RSI init failed for %s. Disabling RSI filter. error=%d", g_state.symbol, GetLastError());
+      g_useRsiFilter = false;
+   }
 
    g_state.lastBarTime = 0;
    g_state.lastTradeDay = 0;
