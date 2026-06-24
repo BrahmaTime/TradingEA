@@ -15,6 +15,19 @@ enum ENUM_RISK_BASIS
    RISK_BASIS_EQUITY  = 1
 };
 
+enum ENUM_SIGNAL_MODE
+{
+   SIGNAL_DIRECT_CLOSE    = 0,
+   SIGNAL_RETEST_REBREAK  = 1
+};
+
+enum ENUM_TRADE_DIRECTION
+{
+   TRADE_BOTH       = 0,
+   TRADE_LONG_ONLY  = 1,
+   TRADE_SHORT_ONLY = 2
+};
+
 input group "Symbols"
 input string          InpSymbols                 = "US30,US500,USTEC"; // Tickmill symbols; suffixes are auto-detected when possible
 input bool            InpAutoResolveSymbols      = true;                // Find broker suffix/prefix if exact name is unavailable
@@ -44,9 +57,14 @@ input double          InpMinAdx                  = 14.0;
 input bool            InpUseVolumeFilter         = false;                // CFD tick volume varies by broker; enable after testing
 input int             InpVolumeLookbackBars      = 20;
 input double          InpVolumeMultiplier        = 1.20;
+input ENUM_SIGNAL_MODE InpSignalMode             = SIGNAL_RETEST_REBREAK;
+input ENUM_TRADE_DIRECTION InpTradeDirection     = TRADE_BOTH;
 input int             InpConfirmCloses           = 1;                   // Closed M5 bars beyond the range
 input bool            InpRequireFreshBreakout    = true;                // Previous bar must not already be beyond range
 input double          InpBreakoutBufferAtr       = 0.03;                // Extra distance beyond range as ATR fraction
+input double          InpRetestToleranceAtr      = 0.12;                // Boundary touch tolerance after first break
+input int             InpRetestMaxBars           = 12;                  // Bars allowed between break and retest/rebreak
+input double          InpMinRebreakBodyAtr       = 0.04;                // Rebreak candle body quality filter
 
 input group "Range and cost filters"
 input double          InpMinRangeAtr             = 0.35;                // Skip very small opening ranges
@@ -104,6 +122,12 @@ struct SymbolState
    bool     longTaken;
    bool     shortTaken;
    bool     initialized;
+   bool     longBreakSeen;
+   bool     shortBreakSeen;
+   bool     longRetested;
+   bool     shortRetested;
+   int      longBreakBars;
+   int      shortBreakBars;
    long     barsProcessed;
    long     atrMissing;
    long     rangeBuilt;
@@ -112,6 +136,10 @@ struct SymbolState
    long     spreadRejected;
    long     longBreakouts;
    long     shortBreakouts;
+   long     longRetests;
+   long     shortRetests;
+   long     longRetestExpired;
+   long     shortRetestExpired;
    long     trendRejectedLong;
    long     trendRejectedShort;
    long     volumeRejectedLong;
@@ -289,6 +317,12 @@ void ResetSession(SymbolState &state, const datetime now)
    state.rangeReady = false;
    state.longTaken  = false;
    state.shortTaken = false;
+   state.longBreakSeen = false;
+   state.shortBreakSeen = false;
+   state.longRetested = false;
+   state.shortRetested = false;
+   state.longBreakBars = 0;
+   state.shortBreakBars = 0;
 }
 
 void UpdateDailyRiskAnchor()
@@ -356,6 +390,10 @@ void ResetDiagnostics(SymbolState &state)
    state.spreadRejected = 0;
    state.longBreakouts = 0;
    state.shortBreakouts = 0;
+   state.longRetests = 0;
+   state.shortRetests = 0;
+   state.longRetestExpired = 0;
+   state.shortRetestExpired = 0;
    state.trendRejectedLong = 0;
    state.trendRejectedShort = 0;
    state.volumeRejectedLong = 0;
@@ -612,6 +650,146 @@ bool BreakoutConfirmed(const SymbolState &state, const bool isLong, const double
    }
 
    return true;
+}
+
+bool DirectionAllowed(const bool isLong)
+{
+   if(InpTradeDirection == TRADE_BOTH)
+      return true;
+   if(isLong)
+      return InpTradeDirection == TRADE_LONG_ONLY;
+   return InpTradeDirection == TRADE_SHORT_ONLY;
+}
+
+bool RebreakBodyPasses(const MqlRates &bar, const double atr)
+{
+   if(InpMinRebreakBodyAtr <= 0.0)
+      return true;
+   if(atr <= 0.0)
+      return false;
+
+   return MathAbs(bar.close - bar.open) >= atr * InpMinRebreakBodyAtr;
+}
+
+void ClearRetestState(SymbolState &state, const bool isLong)
+{
+   if(isLong)
+   {
+      state.longBreakSeen = false;
+      state.longRetested = false;
+      state.longBreakBars = 0;
+   }
+   else
+   {
+      state.shortBreakSeen = false;
+      state.shortRetested = false;
+      state.shortBreakBars = 0;
+   }
+}
+
+bool RetestRebreakConfirmed(SymbolState &state,
+                            const bool isLong,
+                            const double atr,
+                            const MqlRates &lastClosed)
+{
+   if(!DirectionAllowed(isLong))
+      return false;
+
+   const double buffer = atr * InpBreakoutBufferAtr;
+   const double tolerance = atr * InpRetestToleranceAtr;
+   const bool breakSeen = isLong ? state.longBreakSeen : state.shortBreakSeen;
+   const bool retested = isLong ? state.longRetested : state.shortRetested;
+   int barsSinceBreak = isLong ? state.longBreakBars : state.shortBreakBars;
+
+   if(!breakSeen)
+   {
+      if(BreakoutConfirmed(state, isLong, atr))
+      {
+         if(isLong)
+         {
+            state.longBreakSeen = true;
+            state.longRetested = false;
+            state.longBreakBars = 0;
+            state.longBreakouts++;
+         }
+         else
+         {
+            state.shortBreakSeen = true;
+            state.shortRetested = false;
+            state.shortBreakBars = 0;
+            state.shortBreakouts++;
+         }
+      }
+      return false;
+   }
+
+   barsSinceBreak++;
+   if(isLong)
+      state.longBreakBars = barsSinceBreak;
+   else
+      state.shortBreakBars = barsSinceBreak;
+
+   if(InpRetestMaxBars > 0 && barsSinceBreak > InpRetestMaxBars)
+   {
+      if(isLong)
+         state.longRetestExpired++;
+      else
+         state.shortRetestExpired++;
+      ClearRetestState(state, isLong);
+      return false;
+   }
+
+   if(!retested)
+   {
+      const bool touchedBoundary = isLong
+                                   ? lastClosed.low <= state.rangeHigh + tolerance
+                                   : lastClosed.high >= state.rangeLow - tolerance;
+      if(touchedBoundary)
+      {
+         if(isLong)
+         {
+            state.longRetested = true;
+            state.longRetests++;
+         }
+         else
+         {
+            state.shortRetested = true;
+            state.shortRetests++;
+         }
+      }
+      return false;
+   }
+
+   const bool rebreak = isLong
+                        ? lastClosed.close > state.rangeHigh + buffer
+                        : lastClosed.close < state.rangeLow - buffer;
+   if(rebreak && RebreakBodyPasses(lastClosed, atr))
+   {
+      ClearRetestState(state, isLong);
+      return true;
+   }
+
+   return false;
+}
+
+bool SignalConfirmed(SymbolState &state, const bool isLong, const double atr, const MqlRates &lastClosed)
+{
+   if(!DirectionAllowed(isLong))
+      return false;
+
+   if(InpSignalMode == SIGNAL_RETEST_REBREAK)
+      return RetestRebreakConfirmed(state, isLong, atr, lastClosed);
+
+   if(BreakoutConfirmed(state, isLong, atr))
+   {
+      if(isLong)
+         state.longBreakouts++;
+      else
+         state.shortBreakouts++;
+      return true;
+   }
+
+   return false;
 }
 
 bool CalculatePositionSize(const string symbol,
@@ -954,9 +1132,8 @@ void ProcessSymbol(SymbolState &state)
 
    const MqlRates lastClosed = rates[1];
 
-   if(BreakoutConfirmed(state, true, atr))
+   if(SignalConfirmed(state, true, atr, lastClosed))
    {
-      state.longBreakouts++;
       if(TrendPassesFilter(state, true, lastClosed) &&
          VolumePassesFilter(state, true))
       {
@@ -965,9 +1142,8 @@ void ProcessSymbol(SymbolState &state)
       }
    }
 
-   if(BreakoutConfirmed(state, false, atr))
+   if(SignalConfirmed(state, false, atr, lastClosed))
    {
-      state.shortBreakouts++;
       if(TrendPassesFilter(state, false, lastClosed) &&
          VolumePassesFilter(state, false))
       {
@@ -998,6 +1174,9 @@ void PrintDiagnostics()
                   state.symbol, state.longBreakouts, state.shortBreakouts,
                   state.trendRejectedLong, state.trendRejectedShort,
                   state.volumeRejectedLong, state.volumeRejectedShort);
+      PrintFormat("%s diagnostics: retests_long=%I64d retests_short=%I64d retest_expired_long=%I64d retest_expired_short=%I64d",
+                  state.symbol, state.longRetests, state.shortRetests,
+                  state.longRetestExpired, state.shortRetestExpired);
       PrintFormat("%s diagnostics: size_reject_long=%I64d size_reject_short=%I64d order_attempts=%I64d orders_opened=%I64d",
                   state.symbol, state.sizeRejectedLong, state.sizeRejectedShort,
                   state.orderAttempts, state.ordersOpened);
