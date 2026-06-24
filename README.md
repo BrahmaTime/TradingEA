@@ -1,5 +1,112 @@
 # TradingEA
 
+This repository contains two independent MetaTrader 5 Expert Advisors:
+
+- `Experts/CrudeOilPullbackTrader.mq5` — M5 trend-pullback EA for WTI crude oil
+  (USOIL / Tickmill `XTIUSD`). This is the EA documented immediately below.
+- `Experts/IndexOpeningRangeGuardian.mq5` — M5 opening-range breakout EA for US
+  index CFDs (documented later in this file).
+
+The two EAs share no code; each is a self-contained `.mq5` file.
+
+## Crude Oil Pullback Trader for MT5 (USOIL / XTIUSD)
+
+`Experts/CrudeOilPullbackTrader.mq5` is a single-symbol MetaTrader 5 Expert
+Advisor for WTI crude oil on the M5 timeframe. It was designed from scratch for
+intraday oil trading and deliberately avoids martingale, grid, and averaging.
+
+### Strategy
+
+The EA trades **trend pullback continuations**, which are generally considered
+safer than chasing raw breakouts because every entry is aligned with the higher
+timeframe trend and waits for a momentum confirmation:
+
+1. **H1 trend bias** — longs only when the H1 `EMA50 > EMA200` and price is above
+   `EMA200`; shorts only in the mirror condition. No bias means no trade.
+2. **M5 pullback** — price must pull back into the `EMA20` zone (within an
+   ATR-scaled tolerance), arming a setup for a limited number of bars.
+3. **M5 trigger** — a momentum candle closes back through the `EMA20` in the
+   trend direction, with an ATR-scaled minimum body and RSI confirmation
+   (RSI ≥ 50 for longs, ≤ 50 for shorts).
+4. **Trend-strength filter** — optional ADX gate (default ≥ 20) skips chop.
+5. **Stops/targets** — stop is placed beyond the recent swing low/high plus an
+   ATR buffer, bounded by `InpMinStopAtr` / `InpMaxStopAtr`. Take-profit is an
+   R-multiple of the stop distance. Positions move to breakeven and then ATR
+   trail as the trade runs in profit.
+
+### Built-in risk controls
+
+- Fixed-fractional risk per trade in the **account currency** (see ZAR note).
+- Daily equity drawdown guard that pauses new entries (optionally flattens).
+- Max concurrent positions and max trades per day.
+- Spread filter (points and/or percent of ATR).
+- Server-time session window so the EA only trades active oil hours.
+- **Weekly EIA news blackout** — the EIA crude inventory report (Wednesday
+  14:30 UTC) is the single biggest weekly oil event and routinely spikes WTI by
+  $1–$3 within minutes. The EA blocks entries in a configurable window around it.
+
+There is no strategy that is simultaneously guaranteed safe and guaranteed
+profitable. Treat this EA as a robust, backtestable starting point and validate
+it in the Tickmill Strategy Tester and on a demo account before going live.
+
+### Tickmill / ZAR account notes
+
+Position sizing uses `OrderCalcProfit()` to estimate the one-lot loss from entry
+to stop. MT5 returns that figure in the **deposit currency**, so on a Tickmill
+ZAR account the per-trade risk is computed directly in ZAR — no manual FX
+conversion is required. Defaults are intentionally conservative:
+
+- `InpRiskPercentPerTrade = 0.50`
+- `InpMaxDailyLossPercent = 2.00`
+- `InpMaxOpenPositions = 1`
+- `InpMaxTradesPerDay = 4`
+
+On small ZAR accounts the calculated volume can fall below the broker minimum
+lot. When `InpAllowMinLotIfTooLow = true`, the EA uses the minimum lot only if
+the resulting risk stays under `InpMaxMinLotRiskPercent`; otherwise it skips the
+trade.
+
+Tickmill lists WTI as **`XTIUSD`** (1 lot = 100 barrels). Leave `InpSymbol`
+empty to trade the chart symbol, or set it explicitly. With
+`InpAutoResolveSymbol = true`, the EA also tries common aliases
+(`XTIUSD`, `USOIL`, `WTI`, broker prefixes/suffixes) if the exact name is not
+found.
+
+### Installation
+
+1. Copy `Experts/CrudeOilPullbackTrader.mq5` into your MT5 data folder under
+   `MQL5/Experts/`.
+2. Open MetaEditor and compile it (`F7`).
+3. Attach it to an **M5 WTI chart** (e.g. `XTIUSD`).
+4. Load `Presets/USOIL_M5_Tickmill_Recommended.set` from the inputs tab.
+5. Enable AutoTrading.
+
+### Important: server time and the EIA blackout
+
+All session and news inputs are in **broker/server time**. EIA is 14:30 UTC.
+Tickmill's server is typically GMT+2/+3, so the default `InpNewsHour = 16`,
+`InpNewsMinute = 30` targets a GMT+2 server. Confirm your server's UTC offset
+(it shifts with daylight saving) and adjust `InpNewsHour` and the
+`InpTradeStartHour` / `InpTradeEndHour` window accordingly.
+
+### Presets
+
+- `Presets/USOIL_M5_Tickmill_Recommended.set` — conservative first-pass config
+  (ADX on, news blackout on, session filter on).
+- `Presets/USOIL_M5_Tickmill_SignalDiscovery.set` — diagnostic only. Loosens
+  filters (ADX off, news/session off) to confirm the EA produces a usable trade
+  sample. Not intended for live use.
+
+### Tuning and validation
+
+Backtest with "Every tick based on real ticks" if available, across both
+volatile and quiet periods. If a backtest shows zero trades, check the journal
+for the `==== CrudeOilPullbackTrader diagnostics ====` block, which reports how
+many bars reached each gate (`no_bias`, `session_block`, `news_block`,
+`spread_block`, `adx_block`, `armed_*`, `trig_*`, `size_reject`, `orders`).
+Optimize only a few inputs at a time (e.g. `InpMinAdx`, `InpRewardRisk`,
+`InpPullbackTouchAtr`, `InpTrailStartR`) and avoid curve fitting.
+
 ## Index Opening Range Guardian for MT5
 
 `Experts/IndexOpeningRangeGuardian.mq5` is a conservative MetaTrader 5 Expert
