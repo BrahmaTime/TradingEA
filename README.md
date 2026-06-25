@@ -1,13 +1,15 @@
 # TradingEA
 
-This repository contains two independent MetaTrader 5 Expert Advisors:
+This repository contains MetaTrader 5 Expert Advisors:
 
 - `Experts/CrudeOilPullbackTrader.mq5` — M5 trend-pullback EA for WTI crude oil
   (USOIL / Tickmill `XTIUSD`). This is the EA documented immediately below.
+- `Experts/USOil_SMC_SessionFVG.mq5` — NY-session SMC EA (liquidity sweep → MSS
+  → FVG entry). Documented in its own section below.
 - `Experts/IndexOpeningRangeGuardian.mq5` — M5 opening-range breakout EA for US
   index CFDs (documented later in this file).
 
-The two EAs share no code; each is a self-contained `.mq5` file.
+The EAs share no code; each is a self-contained `.mq5` file.
 
 ## Crude Oil Pullback Trader for MT5 (USOIL / XTIUSD)
 
@@ -121,6 +123,61 @@ many bars reached each gate (`no_bias`, `session_block`, `news_block`,
 `spread_block`, `adx_block`, `armed_*`, `trig_*`, `size_reject`, `orders`).
 Optimize only a few inputs at a time (e.g. `InpMinAdx`, `InpRewardRisk`,
 `InpPullbackTouchAtr`, `InpTrailStartR`) and avoid curve fitting.
+
+## USOil SMC Session FVG for MT5
+
+`Experts/USOil_SMC_SessionFVG.mq5` is a Smart Money Concepts (SMC) Expert Advisor
+for WTI crude oil (`XTIUSD` / USOIL) on M5 structure with M15 session context.
+It trades the New York cash session using a three-step pipeline:
+
+1. **Pre-session liquidity** — builds Asian/London highs and lows on M15 before
+   the NY window (default 09:00–14:30 America/New_York, auto EST/EDT).
+2. **Liquidity sweep + MSS** — on M5, price sweeps a pre-session pool, closes
+   back inside tolerance, then prints a displacement candle breaking structure
+   (market structure shift).
+3. **FVG entry** — after MSS, the EA waits for a formal fair value gap and places
+   a limit at the FVG edge or 50% (consequent encroachment), with stop beyond
+   the sweep extreme and take-profit at a fixed R-multiple or opposing liquidity.
+
+Built-in protections mirror the other USOIL EAs: EIA inventory blackout,
+Friday flatten, spread cap, cooldown, max trades per day, and account-currency
+risk sizing via `OrderCalcProfit()` (ZAR-aware on Tickmill).
+
+### Presets
+
+- `Presets/USOIL_M5_Tickmill_SMC_SessionFVG.set` — matches the baseline
+  configuration used in initial Tickmill backtests (formal FVG required, 3R TP,
+  CE limit entry, strict MSS).
+- `Presets/USOIL_M5_Tickmill_SMC_SessionFVG_Relaxed.set` — diagnostic /
+  tuning variant with looser FVG and MSS gates, FVG-edge entry, and slightly
+  lower minimum R. Use to locate filter bottlenecks before reverting to stricter
+  settings.
+
+### Interpreting a baseline backtest (XTIUSD M5, 2025)
+
+A representative Tickmill ZAR run with the baseline preset produced roughly 14
+trades, profit factor ~0.82, and net loss under R100 on a R10,000 deposit.
+That sample is too small for statistical confidence, but the shape is informative:
+
+- **Low trade count** — requiring formal FVG on both sides plus strict MSS keeps
+  frequency very low. Check the journal diagnostics block for
+  `sweep_*`, `mss_*`, and `fvg_*` counters to see which gate is the bottleneck.
+- **Short bias** — most trades were shorts; shorts also showed a lower win rate
+  than longs. Consider A/B testing with `InpAllowShorts=false` or relaxing
+  `InpShortsStrictMSS`.
+- **R-multiple vs breakeven** — with `InpMinRR=3.0` and breakeven at 1R, many
+  trades never reach full target. Compare runs with `InpBreakEvenRR=1.5` or
+  `InpUseBreakEven=false` before changing entry logic.
+- **Entry mode** — mode `2` (FVG CE) can miss fills when price only tags the
+  proximal edge. Compare mode `1` (FVG edge) on the same date range.
+
+### Installation
+
+1. Copy `Experts/USOil_SMC_SessionFVG.mq5` into `MQL5/Experts/`.
+2. Compile in MetaEditor (`F7`).
+3. Attach to an M5 `XTIUSD` chart.
+4. Load `Presets/USOIL_M5_Tickmill_SMC_SessionFVG.set`.
+5. Confirm EIA time (`InpEIATime`) matches your broker server clock.
 
 ## Index Opening Range Guardian for MT5
 
